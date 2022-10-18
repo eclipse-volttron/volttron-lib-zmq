@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "volttron-lib-auth"
+name = "volttron-lib-zmq"
 version = "0.1.0"
-description = "[[ project_description ]]"
+description = "VOLTTRON zmq message bus implementation"
 authors = ["C. Allwardt <3979063+craig8@users.noreply.github.com>"]
 license = "Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/eclipse-volttron/volttron-auth-lib"
-homepage = "https://github.com/eclipse-volttron/volttron-auth-lib"
+repository = "https://github.com/eclipse-volttron/volttron-lib-zmq"
+homepage = "https://github.com/eclipse-volttron/volttron-lib-zmq"
 keywords = []
 packages = [ { include = "volttron", from = "src" } ]
 classifiers = [
@@ -19,6 +19,7 @@ classifiers = [
 ]
 [tool.poetry.dependencies]
 python = ">=3.8,<4.0"
+volttron-lib-auth = { path="../volttron-lib-curve", develop=True}
 
 [tool.poetry.dev-dependencies]
 # formatting, quality, tests
