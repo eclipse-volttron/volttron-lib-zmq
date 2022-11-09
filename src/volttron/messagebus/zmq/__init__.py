@@ -55,10 +55,9 @@ import logging
 from dataclasses import field, dataclass
 from pathlib import Path
 from typing import List, Optional
-import threading
 
 import gevent
-import zmq
+import zmq.green as zmq
 
 from volttron.platform.curve import encode_key
 from volttron.services.auth import AuthService
@@ -310,6 +309,7 @@ class ZmqMessageBus(MessageBusInterface):
             #    raise RuntimeError("Auth service must be started before starting message bus.")
             self._auth_service.read_auth_file()
             self._auth_service.start_watch_files()
+            _log.debug("Spawing zap greenlet")
             self._zap_greenlet = gevent.spawn(self._zap_loop)
             #
             # # self._read_protected_topics_file()
@@ -351,14 +351,15 @@ class ZmqMessageBus(MessageBusInterface):
                 # service_notifier=notifier,
             ).run()
 
-        self._zmq_thread = threading.Thread(target=zmq_router, name="zmq_router", daemon=True)
-        self._zmq_thread.start()
+        self._zmq_thread = gevent.spawn(zmq_router)
+        # self._zmq_thread = threading.Thread(target=zmq_router, name="zmq_router", daemon=True)
+        # self._zmq_thread.start()
+        _log.debug("After thread start")
 
-        gevent.sleep(0.1)
+        # if not self._zmq_thread.is_alive():
+        #     raise ValueError("Zmq Thread has Died!")
 
-        if not self._zmq_thread.is_alive():
-            raise ValueError("Zmq Thread has Died!")
-
+        _log.debug("Returning from start() messagebus.")
         # self.zmq_greenlet = gevent.spawn(zmq_router)
 
     def stop(self):
