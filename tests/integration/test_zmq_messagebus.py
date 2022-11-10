@@ -4,7 +4,7 @@ from multiprocessing import Process
 import gevent
 import pytest
 
-from volttron.messagebus.zmq import ZMQCore, ZmqMessageBusParams, ZmqCredentialGenerator, ZmqMessageBus
+from volttron.messagebus.zmq import ZmqCore, ZmqMessageBusParams, ZmqCredentialGenerator, ZmqMessageBus
 from volttron.services.auth import AuthService
 from volttron.types import Credentials
 from volttron.types.errors import NotFoundError, MessageBusConnectionError
@@ -37,7 +37,7 @@ class InstanceWrapper:
 
 class Connector(object):
     def __init__(self, **kwargs):
-        self.core = ZMQCore(owner=self, **kwargs)
+        self.core = ZmqCore(owner=self, **kwargs)
 
 
 def test_zmq_non_auth():
@@ -77,7 +77,7 @@ def test_cred_generator():
     gen = ZmqCredentialGenerator()
     cred = gen.generate("id1")
     assert isinstance(cred, Credentials)
-    assert cred.identifier == "id1"
+    assert cred.identity == "id1"
     assert cred.type == 'CURVE'
     assert cred.credentials["public"]
     assert cred.credentials["secret"]

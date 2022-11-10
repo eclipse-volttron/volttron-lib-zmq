@@ -67,7 +67,7 @@ from volttron.types import MessageBusInterface, MessageBusParameters, AgentFacto
 from volttron.messagebus.zmq.connection import ZmqMessageBusParams
 from volttron.messagebus.zmq.router import Router
 
-from volttron.messagebus.zmq.zmq_core import ZMQCore
+from volttron.messagebus.zmq.zmq_core import ZmqCore
 
 from threading import local as _local
 
@@ -95,7 +95,7 @@ class ZmqCredentialGenerator(CredentialsGenerator):
     @staticmethod
     def generate(identity: str) -> Credentials:
         ks = KeyStore()
-        return Credentials(identifier=identity, type="CURVE", credentials=ks.generate_keypair_dict())
+        return Credentials(identity=identity, type="CURVE", credentials=ks.generate_keypair_dict())
 
 
 class ZmqMessageBus(MessageBusInterface):

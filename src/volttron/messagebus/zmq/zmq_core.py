@@ -16,11 +16,13 @@ from volttron.client.vip.agent import Core
 from volttron.messagebus.zmq.connection import ZmqConnectionContext
 from volttron.messagebus.zmq.zmq_connection import ZMQConnection
 from volttron.types import Credentials
+from volttron.utils import ClientContext as cc
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
 
-class ZMQCore(Core):
+
+class ZmqCore(Core):
     """
     Concrete Core class for ZeroMQ message bus
     """
@@ -28,13 +30,12 @@ class ZMQCore(Core):
     def __init__(
         self,
         owner,
-        identity: str,
         address: str = None,
         credentials: Credentials = None,
-        server_credentials: Credentials = None,
         agent_uuid: str = None,
-        reconnect_interval: int = None,
+        reconnect_interval: int = None
     ):
+        identity = credentials.identity
         super().__init__(
             owner=owner,
             address=address,
@@ -42,6 +43,7 @@ class ZMQCore(Core):
             reconnect_interval=reconnect_interval
         )
 
+        server_credentials = cc.get_server_credentials()
         if credentials is None and server_credentials is not None or \
                 credentials is not None and server_credentials is None:
             raise ValueError(f"If credentials are specified so should server_credentials {self.__class__.__name__}")
@@ -80,10 +82,10 @@ class ZMQCore(Core):
         self.socket = None
 
     def get_connected(self):
-        return super(ZMQCore, self).get_connected()
+        return super(ZmqCore, self).get_connected()
 
     def set_connected(self, value):
-        super(ZMQCore, self).set_connected(value)
+        super(ZmqCore, self).set_connected(value)
 
     connected = property(get_connected, set_connected)
 
@@ -328,6 +330,6 @@ class ZMQCore(Core):
 
 if __name__ == '__main__':
     a = object()
-    core = ZMQCore()
+    core = ZmqCore()
     zmq_con = ZmqConnectionContext()
     assert zmq_con

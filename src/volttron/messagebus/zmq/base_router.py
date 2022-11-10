@@ -188,7 +188,7 @@ class BaseRouter(object):
     if zmq.zmq_version_info() >= (4, 1, 0):
 
         def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identifier.
+            """Find and return a user identity.
 
             Returns the UTF-8 encoded User-Id property from the sender
             frame or None if the authenticator did not set the User-Id
@@ -208,7 +208,7 @@ class BaseRouter(object):
     else:
 
         def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identifier.
+            """Find and return a user identity.
 
             A no-op by default, this method must be overridden to map
             the sender and auth_token to a user ID. The returned value
