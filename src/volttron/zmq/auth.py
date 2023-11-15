@@ -1,40 +1,108 @@
-# # -*- coding: utf-8 -*- {{{
-# # vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
-# #
-# # Copyright 2020, Battelle Memorial Institute.
-# #
-# # Licensed under the Apache License, Version 2.0 (the "License");
-# # you may not use this file except in compliance with the License.
-# # You may obtain a copy of the License at
-# #
-# # http://www.apache.org/licenses/LICENSE-2.0
-# #
-# # Unless required by applicable law or agreed to in writing, software
-# # distributed under the License is distributed on an "AS IS" BASIS,
-# # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# # See the License for the specific language governing permissions and
-# # limitations under the License.
-# #
-# # This material was prepared as an account of work sponsored by an agency of
-# # the United States Government. Neither the United States Government nor the
-# # United States Department of Energy, nor Battelle, nor any of their
-# # employees, nor any jurisdiction or organization that has cooperated in the
-# # development of these materials, makes any warranty, express or
-# # implied, or assumes any legal liability or responsibility for the accuracy,
-# # completeness, or usefulness or any information, apparatus, product,
-# # software, or process disclosed, or represents that its use would not infringe
-# # privately owned rights. Reference herein to any specific commercial product,
-# # process, or services by trade name, trademark, manufacturer, or otherwise
-# # does not necessarily constitute or imply its endorsement, recommendation, or
-# # favoring by the United States Government or any agency thereof, or
-# # Battelle Memorial Institute. The views and opinions of authors expressed
-# # herein do not necessarily state or reflect those of the
-# # United States Government or any agency thereof.
-# #
-# # PACIFIC NORTHWEST NATIONAL LABORATORY operated by
-# # BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
-# # under Contract DE-AC05-76RL01830
-# # }}}
+# -*- coding: utf-8 -*- {{{
+# vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
+#
+# Copyright 2020, Battelle Memorial Institute.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This material was prepared as an account of work sponsored by an agency of
+# the United States Government. Neither the United States Government nor the
+# United States Department of Energy, nor Battelle, nor any of their
+# employees, nor any jurisdiction or organization that has cooperated in the
+# development of these materials, makes any warranty, express or
+# implied, or assumes any legal liability or responsibility for the accuracy,
+# completeness, or usefulness or any information, apparatus, product,
+# software, or process disclosed, or represents that its use would not infringe
+# privately owned rights. Reference herein to any specific commercial product,
+# process, or services by trade name, trademark, manufacturer, or otherwise
+# does not necessarily constitute or imply its endorsement, recommendation, or
+# favoring by the United States Government or any agency thereof, or
+# Battelle Memorial Institute. The views and opinions of authors expressed
+# herein do not necessarily state or reflect those of the
+# United States Government or any agency thereof.
+#
+# PACIFIC NORTHWEST NATIONAL LABORATORY operated by
+# BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
+# under Contract DE-AC05-76RL01830
+# }}}
+
+from abc import ABCMeta
+from dataclasses import dataclass
+from typing import Any, Dict, List, Type
+
+from volttron.types import (Authentication, AuthenticationError, Authorization, AuthorizationError,
+                            ClientCredentials, Credentials, PublicCredentials)
+
+
+@dataclass
+class ZMQCredentials(Credentials):
+    identity: str
+    publickey: str
+    secretkey: str
+
+    def get_identifier(self) -> str:
+        return self.identity
+
+    def get_credentials(self) -> Dict[str, Any]:
+        return dict(publickey=self.publickey, secretkey=self.secretkey)
+
+    @staticmethod
+    def create(identifier: str, **kwargs) -> Credentials:
+        pass
+
+
+class ZMQAuthentication(Authentication):
+
+    def authenticate(self, credentials: Credentials) -> bool:
+        return super().authenticate(credentials)
+
+    def add_credentials(self, public_credentials: PublicCredentials):
+        return super().add_credentials(public_credentials)
+
+
+class ZMQAuthorization(Authorization):
+
+    def add_permission(self, role: str, permission: str, identifier: str = None) -> None:
+        return super().add_permission(role, permission, identifier)
+
+    def remove_permission(self, role: str, permission: str) -> None:
+        return super().remove_permission(role, permission)
+
+    def add_role(self, role: str) -> None:
+        return super().add_role(role)
+
+    def remove_role(self, role: str) -> None:
+        return super().remove_role(role)
+
+    def assign_role(self, role: str, identifier: str):
+        return super().assign_role(role, identifier)
+
+    def unassign_all_roles(self, identifier: str):
+        return super().unassign_all_roles(identifier)
+
+    def unassign_role(self, role: str, identifer: str):
+        return super().unassign_role(role, identifer)
+
+    def get_permissions(self, role: str = None, identifier: str = None) -> List[str]:
+        return super().get_permissions(role, identifier)
+
+    def get_roles(self, identifer: str = None) -> List[str]:
+        return super().get_roles(identifer)
+
+    def check_permission(self, permission: str, identifier: str) -> bool:
+        return super().check_permission(permission, identifier)
+
+
 #
 # import logging
 # from dataclasses import dataclass

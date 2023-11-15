@@ -47,40 +47,30 @@ state as there is with the gevent version in the green sub-module.
 """
 
 import bisect
-import dataclasses
-import random
-import uuid
-from copy import copy
 import logging
-from dataclasses import field, dataclass
-from pathlib import Path
-from typing import List, Optional
+import random
+import sys
+import uuid
+from threading import local as _local
 
 import gevent
+import zmq as _zmq
 import zmq.green as zmq
-
-from volttron.platform.curve import encode_key
-from volttron.services.auth import AuthService
-from volttron.types import MessageBusInterface, MessageBusParameters, AgentFactory, Credentials, CredentialsGenerator, \
-    CredentialsManager
+#from volttron.utils.socket import _Socket
+#from volttron.platform.curve.keystore import KeyStore
+#from volttron.platform.curve import encode_key
+from volttron.types import (AgentFactory, Credentials, CredentialsGenerator, CredentialsManager,
+                            MessageBusInterface, MessageBusParameters)
 
 from volttron.messagebus.zmq.connection import ZmqMessageBusParams
 from volttron.messagebus.zmq.router import Router
-
+from volttron.messagebus.zmq.socket import _Socket
 from volttron.messagebus.zmq.zmq_core import ZmqCore
 
-from threading import local as _local
-
-import zmq as _zmq
-
-from volttron.messagebus.zmq.socket import _Socket
-#from volttron.utils.socket import _Socket
-from volttron.platform.curve.keystore import KeyStore
-from volttron.types.message import Message
-from volttron.utils import serialize_frames
-
+__all__ = ["ZmqCore", "ZmqMessageBus", "ZmqMessageBusParams"]
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
+
 
 class Socket(_Socket, _zmq.Socket):
     _context_class = _zmq.Context
@@ -92,6 +82,7 @@ class ZmqAgentFactory(AgentFactory):
 
 
 class ZmqCredentialGenerator(CredentialsGenerator):
+
     @staticmethod
     def generate(identity: str) -> Credentials:
         ks = KeyStore()
@@ -99,6 +90,7 @@ class ZmqCredentialGenerator(CredentialsGenerator):
 
 
 class ZmqMessageBus(MessageBusInterface):
+
     def __init__(self):
         super().__init__()
         self._auth_service = None
@@ -109,8 +101,6 @@ class ZmqMessageBus(MessageBusInterface):
         # self._service_credentials: Credentials = None
         self._zmq_thread: threading.Thread = None
         self._credential_manager: CredentialsManager = None
-
-
 
     # def get_server_credentials(self) -> Credentials:
     #     if not self._server_credentials:
@@ -150,7 +140,6 @@ class ZmqMessageBus(MessageBusInterface):
     #
     #     self._secretkey = ks.secret
     #     self._opts = opts
-
 
     @staticmethod
     def get_default_parameters() -> MessageBusParameters:
@@ -256,7 +245,8 @@ class ZmqMessageBus(MessageBusInterface):
                     # else:
                     if type(userid) == bytes:
                         userid = userid.decode("utf-8")
-                    self.auth_service._update_auth_pending(domain, address, kind, credentials[0], userid)
+                    self.auth_service._update_auth_pending(domain, address, kind, credentials[0],
+                                                           userid)
 
                     try:
                         expire, delay = blocked[address]
@@ -288,19 +278,30 @@ class ZmqMessageBus(MessageBusInterface):
 
     def start(self):
         _log.debug(f"Starting {self.__class__.__name__}")
-        if self.params is None:
-            raise ValueError(f"Parameters not set before calling start on {self.__class__.__name__}")
 
-        self._credential_manager: CredentialsManager = self.params.credential_manager
-        self._auth_service = self.params.auth_service
+        # Create a parameter list for the message bus.
+        if self.params is None:
+            self.params = ZmqMessageBusParams()
+
+        # if not set, then set a local address for establishing connections to from
+        # the local machine.
+        if not self.params.local_address or not self.params.addresses:
+            self.params.local_address = "ipc://%s$VOLTTRON_HOME/run/" % (
+                "@" if sys.platform.startswith("linux") else "")
+
+        if self.params.auth_service and self.params.credential_manager:
+            self._credential_manager = self.params.credential_manager
+            self._auth_service = self.params.auth_service
+
+        elif self.params.auth_service or self.params.credential_manager:
+            raise ValueError(
+                "Auth server and credential manager must both be set or neither be set.")
 
         # These are for the server itself.
         publickey = None
         secretkey = None
 
         if self._auth_service is not None:
-            if self._credential_manager is None:
-                raise ValueError("Auth server and credential manager must both be set or neither be set.")
 
             self._start_zap()
             # if self.allow_any:
@@ -321,9 +322,6 @@ class ZmqMessageBus(MessageBusInterface):
             # )
             # if self.core.messagebus == "rmq":
             #     self.vip.peerlist.onadd.connect(self._check_topic_rules)
-        else:
-            if self._credential_manager is not None:
-                raise ValueError("Credentail manager and auth must both be set or neither be set.")
 
         if self._credential_manager:
             _log.debug("Running zmq router")
@@ -342,13 +340,13 @@ class ZmqMessageBus(MessageBusInterface):
                 secretkey=secretkey,
                 publickey=publickey,
                 default_user_id="vip.service",
-                #monitor=opts.monitor,
-                # tracker=tracker,
-                instance_name="my_instance",  # self.params.instance_name,
-                # protected_topics=protected_topics,
-                # external_address_file=external_address_file,
-                # msgdebug=opts.msgdebug,
-                # service_notifier=notifier,
+            #monitor=opts.monitor,
+            # tracker=tracker,
+                instance_name="my_instance",    # self.params.instance_name,
+            # protected_topics=protected_topics,
+            # external_address_file=external_address_file,
+            # msgdebug=opts.msgdebug,
+            # service_notifier=notifier,
             ).run()
 
         self._zmq_thread = gevent.spawn(zmq_router)
@@ -367,3 +365,11 @@ class ZmqMessageBus(MessageBusInterface):
 
         if self._auth_service is not None:
             self._stop_zap()
+
+
+class ZmqAuthentication():
+    pass
+
+
+class ZmqAuthorization():
+    pass

@@ -46,32 +46,19 @@ Socket class is defined in __init__.py. A gevent-friendly version is
 defined in green.py.
 """
 
-from contextlib import contextmanager
 import logging
 import re
 import sys
-import urllib.request, urllib.parse, urllib.error
+import urllib.error
 import urllib.parse
+import urllib.request
 import uuid
+from contextlib import contextmanager
 
 import zmq.green as zmq
-
-from zmq import (
-    SNDMORE,
-    RCVMORE,
-    NOBLOCK,
-    DEALER,
-    ROUTER,
-    curve_keypair,
-    ZMQError,
-)
-
-from volttron.platform.curve import encode_key, decode_key
-from volttron.utils.frame_serialization import (
-    deserialize_frames,
-    serialize_frames,
-)
-
+#from volttron.platform.curve import encode_key, decode_key
+from volttron.utils.frame_serialization import (deserialize_frames, serialize_frames)
+from zmq import (DEALER, NOBLOCK, RCVMORE, ROUTER, SNDMORE, ZMQError, curve_keypair)
 
 __all__ = ["Address", "ProtocolError", "Message", "nonblocking"]
 
@@ -435,9 +422,9 @@ class _Socket(object):
         peer = peer
         msg_id = msg_id
 
-        _log.debug("SEND VIP: peer={}, subsystem={}, args={}, msg_id={}, user={}, type(msg_id)={}".format(
-            peer, subsystem, args, msg_id, user, type(msg_id)
-        ))
+        _log.debug(
+            "SEND VIP: peer={}, subsystem={}, args={}, msg_id={}, user={}, type(msg_id)={}".format(
+                peer, subsystem, args, msg_id, user, type(msg_id)))
         with self._sending(flags) as flags:
             state = self._send_state
             if state > 0:
@@ -510,7 +497,7 @@ class _Socket(object):
             state += 1
             self._recv_state = state
             if proto != b"VIP1":
-                raise ProtocolError("invalid protocol: {!r}{}".format  (
+                raise ProtocolError("invalid protocol: {!r}{}".format(
                     proto[:30], "..." if len(proto) > 30 else ""))
         result = super(_Socket, self).recv(flags=flags, copy=copy, track=track)
         if not self.getsockopt(RCVMORE):

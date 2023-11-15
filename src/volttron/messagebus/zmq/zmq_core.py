@@ -3,20 +3,21 @@ import logging
 import os
 import sys
 import urllib
+import uuid
 from dataclasses import dataclass
-from errno import ENOTSOCK, EAGAIN, ENOENT
+from errno import EAGAIN, ENOENT, ENOTSOCK
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import gevent
 import zmq
+from volttron.client.vip.agent import Core
+from volttron.types import Credentials
+from volttron.utils import ClientContext as cc
 from zmq import ZMQError
 from zmq.utils.monitor import recv_monitor_message
 
-from volttron.client.vip.agent import Core
 from volttron.messagebus.zmq.connection import ZmqConnectionContext
 from volttron.messagebus.zmq.zmq_connection import ZMQConnection
-from volttron.types import Credentials
-from volttron.utils import ClientContext as cc
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
@@ -27,26 +28,28 @@ class ZmqCore(Core):
     Concrete Core class for ZeroMQ message bus
     """
 
-    def __init__(
-        self,
-        owner,
-        address: str = None,
-        credentials: Credentials = None,
-        agent_uuid: str = None,
-        reconnect_interval: int = None
-    ):
-        identity = credentials.identity
-        super().__init__(
-            owner=owner,
-            address=address,
-            identity=identity,
-            reconnect_interval=reconnect_interval
-        )
+    def __init__(self,
+                 owner,
+                 address: str = None,
+                 credentials: Credentials = None,
+                 identity: str = None,
+                 reconnect_interval: int = None,
+                 server_credentials: Credentials = None,
+                 agent_uuid: str = None):
+        if credentials is None and identity is None:
+            identity = str(uuid.uuid4())
+        elif credentials:
+            identity = credentials.get_identifier()
+        super().__init__(owner=owner,
+                         address=address,
+                         identity=identity,
+                         reconnect_interval=reconnect_interval)
 
-        server_credentials = cc.get_server_credentials()
         if credentials is None and server_credentials is not None or \
                 credentials is not None and server_credentials is None:
-            raise ValueError(f"If credentials are specified so should server_credentials {self.__class__.__name__}")
+            raise ValueError(
+                f"If credentials are specified so should server_credentials {self.__class__.__name__}"
+            )
 
         self.secretkey = None
         self.serverkey = None
@@ -66,8 +69,7 @@ class ZmqCore(Core):
                                                         publickey=self.publickey,
                                                         secretkey=self.secretkey,
                                                         serverkey=self.serverkey,
-                                                        reconnect_interval=reconnect_interval,
-                                                        agent_uuid=agent_uuid)
+                                                        reconnect_interval=reconnect_interval)
         self.reconnect_interval = reconnect_interval
         self.address = address
 
@@ -120,8 +122,10 @@ class ZmqCore(Core):
     def _set_public_and_secret_keys(self):
         if self.publickey is None or self.secretkey is None:
             creds = json.loads(os.environ.get('VOLTTRON_CREDENTIAL'))
-            self.publickey = json.loads(creds['server_credential'])['public']  #  os.environ.get("AGENT_PUBLICKEY")
-            self.secretkey = json.loads(creds['server_credential'])['secret']  # os.environ.get("AGENT_SECRETKEY")
+            self.publickey = json.loads(
+                creds['server_credential'])['public']    #  os.environ.get("AGENT_PUBLICKEY")
+            self.secretkey = json.loads(
+                creds['server_credential'])['secret']    # os.environ.get("AGENT_SECRETKEY")
             _log.debug(
                 f"after setting agent private and public key {self.publickey} {self.secretkey}")
         if self.publickey is None or self.secretkey is None:
@@ -135,7 +139,8 @@ class ZmqCore(Core):
             _log.debug(f"server key from env {os.environ.get('VOLTTRON_SERVERKEY')}")
             creds = json.loads(os.environ.get('VOLTTRON_SERVER_CREDENTIAL'))
 
-            self.serverkey = json.loads(creds['server_credential'])['public']  #  os.environ.get("VOLTTRON_SERVERKEY")
+            self.serverkey = json.loads(
+                creds['server_credential'])['public']    #  os.environ.get("VOLTTRON_SERVERKEY")
 
         # TODO: This needs to move somewhere else that is not zmq dependent some mapping between host and creds.
         known_serverkey = self.serverkey
@@ -259,7 +264,7 @@ class ZmqCore(Core):
         # ipc = ipc.replace("$VOLTTRON_HOME", os.path.expanduser("~/.volttron"))
         # self.address = ipc
         if self.address[:4] in ["tcp:", "ipc:"]:
-           self.spawn(monitor).join(0)
+            self.spawn(monitor).join(0)
         self.connection.connect()
         if self.address.startswith("inproc:"):
             hello()

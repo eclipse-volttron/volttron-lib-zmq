@@ -1,27 +1,25 @@
 import logging
 import os
 import sys
+import uuid
 from typing import Optional
 from urllib.parse import urlparse
-import uuid
 
 import zmq
-from zmq import ZMQError, NOBLOCK
-
-from volttron.utils import serialize_frames, deserialize_frames, jsonapi
+#from volttron.services.routing import RoutingService
+from volttron.server.monitor import Monitor
+from volttron.types import PeerNotifier
+from volttron.utils import deserialize_frames, jsonapi, serialize_frames
 from volttron.utils.logs import FramesFormatter
+from zmq import NOBLOCK, ZMQError
 
-
-from .base_router import BaseRouter, UNROUTABLE, ERROR, INCOMING
+from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
+from .pubsub import PubSubService
+from .socket import Address
 
 #from volttron.services.routing import ExternalRPCService, PubSubService
 
-from volttron.types import PeerNotifier
-#from volttron.services.routing import RoutingService
-from volttron.server.monitor import Monitor
-from .pubsub import PubSubService
-from .socket import Address
-from volttron.platform.curve.keystore import KeyStore
+# from volttron.platform.curve.keystore import KeyStore
 
 # from ..server import __version__
 
@@ -72,7 +70,6 @@ class Router(BaseRouter):
         self.ext_rpc = None
         self._msgdebug = msgdebug
         self._message_debugger_socket = None
-        self._instance_name = instance_name
         self._agent_monitor_frequency = agent_monitor_frequency
 
     def setup(self):
