@@ -109,6 +109,36 @@ def zmq_router(opts: argparse.Namespace, notifier, secretkey, publickey, tracker
         stop(platform_shutdown=True)
 
 
+class ZmqMessageBus:
+
+    def __init__(self, opts: argparse.Namespace, notifier, secretkey, publickey, tracker, protected_topics,
+                 external_address_file, stop):
+        self._opts = opts
+        self._notifier = notifier
+        self._secretkey = secretkey
+        self._publickey = publickey
+        self._tracker = tracker
+        self._protected_topics = protected_topics
+        self._external_address_file = external_address_file
+        self._stop = stop
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=zmq_router,
+                                        daemon=True,
+                                        args=[
+                                            self._opts, self._notifier, self._secretkey, self._publickey, self._tracker,
+                                            self._protected_topics, self._external_address_file, self._stop
+                                        ])
+        self._thread.start()
+
+    def is_running(self):
+        return self._thread.is_alive()
+
+    def stop(self):
+        pass
+
+
 class ZmqCredentials(PKICredentials):
     serverkey: str
 
@@ -186,317 +216,315 @@ class ZmqConnection:
 #         ks = KeyStore()
 #         return Credentials(identity=identity, type="CURVE", credentials=ks.generate_keypair_dict())
 
+# @messagebus
+# class ZmqMessageBus(MessageBus):
 
-@messagebus
-class ZmqMessageBus(MessageBus):
+#     class Meta:
+#         name = "zmq"
 
-    class Meta:
-        name = "zmq"
+#     def __init__(self):
+#         self._auth_service: AuthService = None
+#         self._zap_socket = None
+#         self._zap_greenlet = None
+#         # self._auth_service: AuthService = None
+#         # self._server_credentials: Credentials = None
+#         # self._service_credentials: Credentials = None
+#         self._zmq_thread: threading.Thread = None
+#         self._authenticator: Authenticator = None
+#         self._server_credentials: PKICredentials = None
 
-    def __init__(self):
-        self._auth_service: AuthService = None
-        self._zap_socket = None
-        self._zap_greenlet = None
-        # self._auth_service: AuthService = None
-        # self._server_credentials: Credentials = None
-        # self._service_credentials: Credentials = None
-        self._zmq_thread: threading.Thread = None
-        self._authenticator: Authenticator = None
-        self._server_credentials: PKICredentials = None
+#     @logtrace
+#     def start(self, options: ServerOptions):
+#         self._options = options
+#         self._start()
 
-    @logtrace
-    def start(self, options: ServerOptions):
-        self._options = options
-        self._start()
+#     def stop():
+#         ...
 
-    def stop():
-        ...
+#     def is_running() -> bool:
+#         ...
 
-    def is_running() -> bool:
-        ...
+#     def send_vip_message(message: Message):
+#         ...
 
-    def send_vip_message(message: Message):
-        ...
+#     def receive_vip_message():
+#         ...
 
-    def receive_vip_message():
-        ...
+#     # def get_server_credentials(self) -> Credentials:
+#     #     if not self._server_credentials:
+#     #         raise ValueError("Initialize object before attempting to get Credentials.")
+#     #
+#     #     return self._server_credentials
+#     #
+#     # def get_service_credentials(self) -> Credentials:
+#     #     if not self._service_credentials:
+#     #         raise ValueError("Initialize object before attempting to get service credentials.")
+#     #
+#     #     return self._service_credentials
 
-    # def get_server_credentials(self) -> Credentials:
-    #     if not self._server_credentials:
-    #         raise ValueError("Initialize object before attempting to get Credentials.")
-    #
-    #     return self._server_credentials
-    #
-    # def get_service_credentials(self) -> Credentials:
-    #     if not self._service_credentials:
-    #         raise ValueError("Initialize object before attempting to get service credentials.")
-    #
-    #     return self._service_credentials
+#     # def initialize(self, **kwargs):
+#     #     """
+#     #     Initialize the message bus so that it's ready to run after setting up the
+#     #     auth service or whatever is necessary.
+#     #
+#     #     :param opts:
+#     #     :return:
+#     #     """
+#     #
+#     #     cred_store = Path(f"{opts.volttron_home}/credential_store")
+#     #     cred_store.mkdir(exist_ok=True)
+#     #     server_cred = cred_store.joinpath("server.json")
+#     #     service_cred = cred_store.joinpath("service.json")
+#     #
+#     #     if not server_cred.exists():
+#     #         # Initialize the credentials that are required to connect to as the platform.
+#     #         ks = KeyStore(f"{server_cred}")
+#     #         self._server_credentials = Credentials("platform", "CURVE", ks)
+#     #
+#     #     if not service_cred.exists():
+#     #         # Initialize the credentials that are required to connect to as the platform.
+#     #         ks = KeyStore(f"{service_cred}")
+#     #         self._service_credentials = Credentials("platform", "CURVE", ks)
+#     #
+#     #     self._secretkey = ks.secret
+#     #     self._opts = opts
 
-    # def initialize(self, **kwargs):
-    #     """
-    #     Initialize the message bus so that it's ready to run after setting up the
-    #     auth service or whatever is necessary.
-    #
-    #     :param opts:
-    #     :return:
-    #     """
-    #
-    #     cred_store = Path(f"{opts.volttron_home}/credential_store")
-    #     cred_store.mkdir(exist_ok=True)
-    #     server_cred = cred_store.joinpath("server.json")
-    #     service_cred = cred_store.joinpath("service.json")
-    #
-    #     if not server_cred.exists():
-    #         # Initialize the credentials that are required to connect to as the platform.
-    #         ks = KeyStore(f"{server_cred}")
-    #         self._server_credentials = Credentials("platform", "CURVE", ks)
-    #
-    #     if not service_cred.exists():
-    #         # Initialize the credentials that are required to connect to as the platform.
-    #         ks = KeyStore(f"{service_cred}")
-    #         self._service_credentials = Credentials("platform", "CURVE", ks)
-    #
-    #     self._secretkey = ks.secret
-    #     self._opts = opts
+#     def _start_zap(self):
+#         self.zap_socket = zmq.Socket(zmq.Context.instance(), zmq.ROUTER)
+#         self.zap_socket.bind("inproc://zeromq.zap.01")
 
-    def _start_zap(self):
-        self.zap_socket = zmq.Socket(zmq.Context.instance(), zmq.ROUTER)
-        self.zap_socket.bind("inproc://zeromq.zap.01")
+#     def _stop_zap(self):
+#         if self._zap_greenlet is not None:
+#             self._zap_greenlet.kill()
 
-    def _stop_zap(self):
-        if self._zap_greenlet is not None:
-            self._zap_greenlet.kill()
+#         if self.zap_socket is not None:
+#             self.zap_socket.unbind("inproc://zeromq.zap.01")
 
-        if self.zap_socket is not None:
-            self.zap_socket.unbind("inproc://zeromq.zap.01")
+#     def _zap_loop(self):
+#         """
+#                 The zap loop is the starting of the authentication process for
+#                 the VOLTTRON zmq message bus.  It talks directly with the low
+#                 level socket so all responses must be byte like objects, in
+#                 this case we are going to send zmq frames across the wire.
 
-    def _zap_loop(self):
-        """
-                The zap loop is the starting of the authentication process for
-                the VOLTTRON zmq message bus.  It talks directly with the low
-                level socket so all responses must be byte like objects, in
-                this case we are going to send zmq frames across the wire.
+#                 :param sender:
+#                 :param kwargs:
+#                 :return:
+#                 """
+#         self._is_connected = True
+#         self._zap_greenlet = gevent.getcurrent()
+#         sock = self.zap_socket
+#         time = gevent.core.time
+#         blocked = {}
+#         wait_list = []
+#         timeout = None
+#         # if self.core.messagebus == "rmq":
+#         #     # Check the topic permissions of all the connected agents
+#         #     self._check_rmq_topic_permissions()
+#         # else:
 
-                :param sender:
-                :param kwargs:
-                :return:
-                """
-        self._is_connected = True
-        self._zap_greenlet = gevent.getcurrent()
-        sock = self.zap_socket
-        time = gevent.core.time
-        blocked = {}
-        wait_list = []
-        timeout = None
-        # if self.core.messagebus == "rmq":
-        #     # Check the topic permissions of all the connected agents
-        #     self._check_rmq_topic_permissions()
-        # else:
+#         #self._send_protected_update_to_pubsub(self._protected_topics)
 
-        #self._send_protected_update_to_pubsub(self._protected_topics)
+#         while True:
+#             events = sock.poll(timeout)
+#             now = time()
+#             if events:
+#                 zap = sock.recv_multipart()
 
-        while True:
-            events = sock.poll(timeout)
-            now = time()
-            if events:
-                zap = sock.recv_multipart()
+#                 version = zap[2]
+#                 if version != b"1.0":
+#                     continue
+#                 domain, address, userid, kind = zap[4:8]
+#                 credentials = zap[8:]
+#                 if kind == b"CURVE":
+#                     credentials[0] = encode_key(credentials[0])
+#                 elif kind not in [b"NULL", b"PLAIN"]:
+#                     continue
+#                 response = zap[:4]
+#                 domain = domain.decode("utf-8")
+#                 address = address.decode("utf-8")
+#                 kind = kind.decode("utf-8")
+#                 user = self._auth_service.authenticate(domain, address, kind, credentials)
+#                 _log.debug(f"AUTH: After authenticate user id: {user}, {userid}")
+#                 if user:
+#                     _log.info(
+#                         "authentication success: userid=%r domain=%r, address=%r, "
+#                         "mechanism=%r, credentials=%r, user=%r",
+#                         userid,
+#                         domain,
+#                         address,
+#                         kind,
+#                         credentials[:1],
+#                         user,
+#                     )
+#                     response.extend([b"200", b"SUCCESS", user.encode("utf-8"), b""])
+#                     sock.send_multipart(response)
+#                 else:
+#                     userid = str(uuid.uuid4())
+#                     _log.info(
+#                         "authentication failure: userid=%r, domain=%r, address=%r, "
+#                         "mechanism=%r, credentials=%r",
+#                         userid,
+#                         domain,
+#                         address,
+#                         kind,
+#                         credentials,
+#                     )
+#                     # TODO SETUP MODE????
+#                     # If in setup mode, add/update auth entry
+#                     # if self._setup_mode:
+#                     #     self._update_auth_entry(domain, address, kind, credentials[0], userid)
+#                     #     _log.info(
+#                     #         "new authentication entry added in setup mode: domain=%r, address=%r, "
+#                     #         "mechanism=%r, credentials=%r, user_id=%r",
+#                     #         domain,
+#                     #         address,
+#                     #         kind,
+#                     #         credentials[:1],
+#                     #         userid,
+#                     #     )
+#                     #     response.extend([b"200", b"SUCCESS", b"", b""])
+#                     #     _log.debug("AUTH response: {}".format(response))
+#                     #     sock.send_multipart(response)
+#                     # else:
+#                     if type(userid) == bytes:
+#                         userid = userid.decode("utf-8")
+#                     self.auth_service._update_auth_pending(domain, address, kind, credentials[0], userid)
 
-                version = zap[2]
-                if version != b"1.0":
-                    continue
-                domain, address, userid, kind = zap[4:8]
-                credentials = zap[8:]
-                if kind == b"CURVE":
-                    credentials[0] = encode_key(credentials[0])
-                elif kind not in [b"NULL", b"PLAIN"]:
-                    continue
-                response = zap[:4]
-                domain = domain.decode("utf-8")
-                address = address.decode("utf-8")
-                kind = kind.decode("utf-8")
-                user = self._auth_service.authenticate(domain, address, kind, credentials)
-                _log.debug(f"AUTH: After authenticate user id: {user}, {userid}")
-                if user:
-                    _log.info(
-                        "authentication success: userid=%r domain=%r, address=%r, "
-                        "mechanism=%r, credentials=%r, user=%r",
-                        userid,
-                        domain,
-                        address,
-                        kind,
-                        credentials[:1],
-                        user,
-                    )
-                    response.extend([b"200", b"SUCCESS", user.encode("utf-8"), b""])
-                    sock.send_multipart(response)
-                else:
-                    userid = str(uuid.uuid4())
-                    _log.info(
-                        "authentication failure: userid=%r, domain=%r, address=%r, "
-                        "mechanism=%r, credentials=%r",
-                        userid,
-                        domain,
-                        address,
-                        kind,
-                        credentials,
-                    )
-                    # TODO SETUP MODE????
-                    # If in setup mode, add/update auth entry
-                    # if self._setup_mode:
-                    #     self._update_auth_entry(domain, address, kind, credentials[0], userid)
-                    #     _log.info(
-                    #         "new authentication entry added in setup mode: domain=%r, address=%r, "
-                    #         "mechanism=%r, credentials=%r, user_id=%r",
-                    #         domain,
-                    #         address,
-                    #         kind,
-                    #         credentials[:1],
-                    #         userid,
-                    #     )
-                    #     response.extend([b"200", b"SUCCESS", b"", b""])
-                    #     _log.debug("AUTH response: {}".format(response))
-                    #     sock.send_multipart(response)
-                    # else:
-                    if type(userid) == bytes:
-                        userid = userid.decode("utf-8")
-                    self.auth_service._update_auth_pending(domain, address, kind, credentials[0], userid)
+#                     try:
+#                         expire, delay = blocked[address]
+#                     except KeyError:
+#                         delay = random.random()
+#                     else:
+#                         if now >= expire:
+#                             delay = random.random()
+#                         else:
+#                             delay *= 2
+#                             if delay > 100:
+#                                 delay = 100
+#                     expire = now + delay
+#                     bisect.bisect(wait_list, (expire, address, response))
+#                     blocked[address] = expire, delay
+#             while wait_list:
+#                 expire, address, response = wait_list[0]
+#                 if now < expire:
+#                     break
+#                 wait_list.pop(0)
+#                 response.extend([b"400", b"FAIL", b"", b""])
+#                 sock.send_multipart(response)
+#                 try:
+#                     if now >= blocked[address][0]:
+#                         blocked.pop(address)
+#                 except KeyError:
+#                     pass
+#             timeout = (wait_list[0][0] - now) if wait_list else None
 
-                    try:
-                        expire, delay = blocked[address]
-                    except KeyError:
-                        delay = random.random()
-                    else:
-                        if now >= expire:
-                            delay = random.random()
-                        else:
-                            delay *= 2
-                            if delay > 100:
-                                delay = 100
-                    expire = now + delay
-                    bisect.bisect(wait_list, (expire, address, response))
-                    blocked[address] = expire, delay
-            while wait_list:
-                expire, address, response = wait_list[0]
-                if now < expire:
-                    break
-                wait_list.pop(0)
-                response.extend([b"400", b"FAIL", b"", b""])
-                sock.send_multipart(response)
-                try:
-                    if now >= blocked[address][0]:
-                        blocked.pop(address)
-                except KeyError:
-                    pass
-            timeout = (wait_list[0][0] - now) if wait_list else None
+#     @logtrace
+#     def _start(self):
+#         _log.debug(f"Starting {self.__class__.__name__}")
 
-    @logtrace
-    def _start(self):
-        _log.debug(f"Starting {self.__class__.__name__}")
+#         if not self._options.address:
+#             raise ValueError("Address is not set in options.")
 
-        if not self._options.address:
-            raise ValueError("Address is not set in options.")
+#         # if not set, then set a local address for establishing connections to from
+#         # the local machine.
+#         # if not self.params.local_address or not self.params.addresses:
+#         #     self.params.local_address = "ipc://%s$VOLTTRON_HOME/run/" % (
+#         #         "@" if sys.platform.startswith("linux") else "")
 
-        # if not set, then set a local address for establishing connections to from
-        # the local machine.
-        # if not self.params.local_address or not self.params.addresses:
-        #     self.params.local_address = "ipc://%s$VOLTTRON_HOME/run/" % (
-        #         "@" if sys.platform.startswith("linux") else "")
+#         try:
+#             self._auth_service = service_repo.resolve(AuthService)
+#             self._authenticator = service_repo.resolve(Authenticator)
+#         except KeyError:
+#             self._auth_service = None
+#             self._authenticator = None
 
-        try:
-            self._auth_service = service_repo.resolve(AuthService)
-            self._authenticator = service_repo.resolve(Authenticator)
-        except KeyError:
-            self._auth_service = None
-            self._authenticator = None
+#         if self._auth_service:
+#             cred_store: CredentialsStore = service_repo.resolve(CredentialsStore)
+#             # Grab and store the cretials of the server.  Raises an error if this
+#             # identity is not available.
+#             self._server_credentials = cred_store.retrieve_credentials(identity="server")
 
-        if self._auth_service:
-            cred_store: CredentialsStore = service_repo.resolve(CredentialsStore)
-            # Grab and store the cretials of the server.  Raises an error if this
-            # identity is not available.
-            self._server_credentials = cred_store.retrieve_credentials(identity="server")
+#         # elif self.params.auth_service or self.params.credential_manager:
+#         #     raise ValueError(
+#         #         "Auth server and credential manager must both be set or neither be set.")
 
-        # elif self.params.auth_service or self.params.credential_manager:
-        #     raise ValueError(
-        #         "Auth server and credential manager must both be set or neither be set.")
+#         # These are for the server itself.
+#         publickey = None
+#         secretkey = None
 
-        # These are for the server itself.
-        publickey = None
-        secretkey = None
+#         if self._auth_service is not None:
 
-        if self._auth_service is not None:
+#             self._start_zap()
+#             # if self.allow_any:
+#             #     _log.warning("insecure permissive authentication enabled")
+#             #if self._auth_service.greenlet is None:
+#             #    raise RuntimeError("Auth service must be started before starting message bus.")
+#             #self._auth_service.read_auth_file()
+#             #self._auth_service.start_watch_files()
+#             _log.debug("Spawing zap greenlet")
+#             self._zap_greenlet = gevent.spawn(self._zap_loop)
+#             publickey = self._server_credentials.publickey
+#             secretkey = self._server_credentials.secretkey
+#             #
+#             # # self._read_protected_topics_file()
+#             # self.core.spawn(watch_file, self.auth_file_path, self.read_auth_file)
+#             # self.core.spawn(
+#             #     watch_file,
+#             #     self._protected_topics_file_path,
+#             #     self._read_protected_topics_file,
+#             # )
+#             # if self.core.messagebus == "rmq":
+#             #     self.vip.peerlist.onadd.connect(self._check_topic_rules)
 
-            self._start_zap()
-            # if self.allow_any:
-            #     _log.warning("insecure permissive authentication enabled")
-            #if self._auth_service.greenlet is None:
-            #    raise RuntimeError("Auth service must be started before starting message bus.")
-            #self._auth_service.read_auth_file()
-            #self._auth_service.start_watch_files()
-            _log.debug("Spawing zap greenlet")
-            self._zap_greenlet = gevent.spawn(self._zap_loop)
-            publickey = self._server_credentials.publickey
-            secretkey = self._server_credentials.secretkey
-            #
-            # # self._read_protected_topics_file()
-            # self.core.spawn(watch_file, self.auth_file_path, self.read_auth_file)
-            # self.core.spawn(
-            #     watch_file,
-            #     self._protected_topics_file_path,
-            #     self._read_protected_topics_file,
-            # )
-            # if self.core.messagebus == "rmq":
-            #     self.vip.peerlist.onadd.connect(self._check_topic_rules)
+#         # if self._credential_manager:
+#         #     _log.debug("Running zmq router")
 
-        # if self._credential_manager:
-        #     _log.debug("Running zmq router")
+#         #     # Throws credential error if not found.
+#         #     server_creds = self._credential_manager.load("server")
 
-        #     # Throws credential error if not found.
-        #     server_creds = self._credential_manager.load("server")
+#         #     publickey = server_creds.credentials["public"]
+#         #     secretkey = server_creds.credentials["secret"]
+#         ipc = 'ipc://%s$VOLTTRON_HOME/run/' % ('@' if sys.platform.startswith('linux') else '')
+#         internal_address = ipc + 'vip.socket'
 
-        #     publickey = server_creds.credentials["public"]
-        #     secretkey = server_creds.credentials["secret"]
-        ipc = 'ipc://%s$VOLTTRON_HOME/run/' % ('@' if sys.platform.startswith('linux') else '')
-        internal_address = ipc + 'vip.socket'
+#         def zmq_router():
 
-        def zmq_router():
+#             Router(
+#                 addresses=self._options.address,
+#                 local_address=internal_address,
+#                 secretkey=secretkey,
+#                 publickey=publickey,
+#                 default_user_id="vip.service",
+#             #monitor=opts.monitor,
+#             # tracker=tracker,
+#                 instance_name=self._options.instance_name,    # self.params.instance_name,
+#             # protected_topics=protected_topics,
+#             # external_address_file=external_address_file,
+#             # msgdebug=opts.msgdebug,
+#             # service_notifier=notifier,
+#             ).run()
 
-            Router(
-                addresses=self._options.address,
-                local_address=internal_address,
-                secretkey=secretkey,
-                publickey=publickey,
-                default_user_id="vip.service",
-            #monitor=opts.monitor,
-            # tracker=tracker,
-                instance_name=self._options.instance_name,    # self.params.instance_name,
-            # protected_topics=protected_topics,
-            # external_address_file=external_address_file,
-            # msgdebug=opts.msgdebug,
-            # service_notifier=notifier,
-            ).run()
+#         self._zmq_thread = gevent.spawn(zmq_router)
+#         gevent.sleep(0.1)
+#         # self._zmq_thread = threading.Thread(target=zmq_router, name="zmq_router", daemon=True)
+#         # self._zmq_thread.start()
+#         _log.debug("After thread start")
 
-        self._zmq_thread = gevent.spawn(zmq_router)
-        gevent.sleep(0.1)
-        # self._zmq_thread = threading.Thread(target=zmq_router, name="zmq_router", daemon=True)
-        # self._zmq_thread.start()
-        _log.debug("After thread start")
+#         # if not self._zmq_thread.is_alive():
+#         #     raise ValueError("Zmq Thread has Died!")
 
-        # if not self._zmq_thread.is_alive():
-        #     raise ValueError("Zmq Thread has Died!")
+#         _log.debug("Returning from start() messagebus.")
+#         # self.zmq_greenlet = gevent.spawn(zmq_router)
 
-        _log.debug("Returning from start() messagebus.")
-        # self.zmq_greenlet = gevent.spawn(zmq_router)
+#     def stop(self):
+#         _log.debug(f"Stopping {self.__class__.__name__}")
 
-    def stop(self):
-        _log.debug(f"Stopping {self.__class__.__name__}")
+#         if self._auth_service is not None:
+#             self._stop_zap()
 
-        if self._auth_service is not None:
-            self._stop_zap()
+# # class ZmqAuthentication():
+# #     pass
 
-
-# class ZmqAuthentication():
-#     pass
-
-# class ZmqAuthorization():
-#     pass
+# # class ZmqAuthorization():
+# #     pass
