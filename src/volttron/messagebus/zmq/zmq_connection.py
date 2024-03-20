@@ -1,49 +1,36 @@
 # -*- coding: utf-8 -*- {{{
-# vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
+# ===----------------------------------------------------------------------===
 #
-# Copyright 2020, Battelle Memorial Institute.
+#                 Installable Component of Eclipse VOLTTRON
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# ===----------------------------------------------------------------------===
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+# Copyright 2022 Battelle Memorial Institute
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 #
-# This material was prepared as an account of work sponsored by an agency of
-# the United States Government. Neither the United States Government nor the
-# United States Department of Energy, nor Battelle, nor any of their
-# employees, nor any jurisdiction or organization that has cooperated in the
-# development of these materials, makes any warranty, express or
-# implied, or assumes any legal liability or responsibility for the accuracy,
-# completeness, or usefulness or any information, apparatus, product,
-# software, or process disclosed, or represents that its use would not infringe
-# privately owned rights. Reference herein to any specific commercial product,
-# process, or service by trade name, trademark, manufactufrer, or otherwise
-# does not necessarily constitute or imply its endorsement, recommendation, or
-# favoring by the United States Government or any agency thereof, or
-# Battelle Memorial Institute. The views and opinions of authors expressed
-# herein do not necessarily state or reflect those of the
-# United States Government or any agency thereof.
-#
-# PACIFIC NORTHWEST NATIONAL LABORATORY operated by
-# BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
-# under Contract DE-AC05-76RL01830
+# ===----------------------------------------------------------------------===
 # }}}
+
 import logging
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
 
-import zmq.green as zmq
+import zmq
 from volttron.types import Message
 from volttron.types.bases import Connection
 
-from .green import Socket as GreenSocket
+from volttron.messagebus.zmq.green import Socket as GreenSocket
 
 # TODO ADD BACK rmq
 # from volttron.client.vip.rmq_connection import BaseConnection
@@ -66,27 +53,17 @@ class ZmqConnection(Connection):
     Maintains ZMQ socket connection
     """
 
-    def __init__(self, conn_context: ZmqConnectionContext, zmq_context: zmq.Context):
-        super().__init__()
-        self._conn_context = conn_context
+    def __init__(self, url, identity, instance_name, context):
 
+        self._url = url
+        self._identity = identity
+        self._instance_name = instance_name
+        self._vip_handler = None
         self.socket = None
-        self.context = zmq_context
-        self._identity = self._conn_context.identity
+        self.context = context
+        self._identity = identity
         self._logger = logging.getLogger(__name__)
-        self._logger.debug(f"ZMQ connection {self._identity}")
-
-    def connected(self) -> bool:
-        ...
-
-    def is_connected(self) -> bool:
-        ...
-
-    def send_vip_message(self, message: Message):
-        ...
-
-    def recieve_vip_message(self) -> Message:
-        ...
+        self._logger.debug("ZMQ connection {}".format(identity))
 
     def open_connection(self, type):
         if type == zmq.DEALER:
@@ -104,14 +81,28 @@ class ZmqConnection(Connection):
             self.socket.setsockopt(zmq.RECONNECT_IVL, reconnect_interval)
 
     def connect(self, callback=None):
-        _log.debug(f"connecting to address {self._conn_context.address}")
+        _log.debug(f"connecting to url {self._url}")
+        _log.debug(f"url type is {type(self._url)}")
 
-        self.socket.connect(self._conn_context.address)
+        self.socket.connect(self._url)
         if callback:
             callback(True)
 
     def bind(self):
         pass
+
+    def is_connected(self) -> bool:
+        ...
+
+    @property
+    def connected(self) -> bool:
+        ...
+
+    def send_vip_message(self, message: Message):
+        ...
+
+    def recieve_vip_message(self) -> Message:
+        ...
 
     def register(self, handler):
         self._vip_handler = handler
