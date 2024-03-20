@@ -109,7 +109,8 @@ def zmq_router(opts: argparse.Namespace, notifier, secretkey, publickey, tracker
         stop(platform_shutdown=True)
 
 
-class ZmqMessageBus:
+@messagebus
+class ZmqMessageBus(MessageBus):
 
     def __init__(self, opts: argparse.Namespace, notifier, secretkey, publickey, tracker, protected_topics,
                  external_address_file, stop):
@@ -137,6 +138,12 @@ class ZmqMessageBus:
 
     def stop(self):
         pass
+
+    def send_vip_message(self, message: Message):
+        ...
+
+    def receive_vip_message() -> Message:
+        ...
 
 
 class ZmqCredentials(PKICredentials):
