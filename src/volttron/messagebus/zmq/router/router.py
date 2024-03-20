@@ -25,26 +25,22 @@
 import logging
 import os
 import sys
+import uuid
 from typing import Optional
 from urllib.parse import urlparse
-import uuid
 
 import zmq
-from zmq import ZMQError, NOBLOCK
-
-from volttron.utils import serialize_frames, deserialize_frames, jsonapi
+from volttron.client.known_identities import CONTROL
+from volttron.server.monitor import Monitor
+from volttron.services.routing import (ExternalRPCService, PubSubService, RoutingService)
+from volttron.types.peer import ServicePeerNotifier
+from volttron.utils import deserialize_frames, jsonapi, serialize_frames
+from volttron.utils.keystore import KeyStore
 from volttron.utils.logs import FramesFormatter
 from volttron.utils.socket import Address
-from volttron.utils.keystore import KeyStore
+from zmq import NOBLOCK, ZMQError
 
-from .base_router import BaseRouter, UNROUTABLE, ERROR, INCOMING
-
-from volttron.services.routing import ExternalRPCService, PubSubService
-
-from volttron.types.peer import ServicePeerNotifier
-from volttron.services.routing import RoutingService
-from volttron.server.monitor import Monitor
-from ...client.known_identities import CONTROL
+from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
 
 _log = logging.getLogger(__name__)
 
@@ -85,7 +81,7 @@ class Router(BaseRouter):
         self._publickey = publickey
         self.logger = logging.getLogger("vip.router")
         if self.logger.level == logging.NOTSET:
-            self.logger.setLevel(logging.DEBUG) # .WARNING)
+            self.logger.setLevel(logging.DEBUG)    # .WARNING)
         self._monitor = monitor
         self._tracker = tracker
         self._volttron_central_address = volttron_central_address
@@ -99,8 +95,7 @@ class Router(BaseRouter):
                 "amqp",
             ), "volttron central address must begin with http(s) or tcp found"
             if parsed.scheme == "tcp":
-                assert (volttron_central_serverkey
-                        ), "volttron central serverkey must be set if address is tcp."
+                assert (volttron_central_serverkey), "volttron central serverkey must be set if address is tcp."
         self._volttron_central_serverkey = volttron_central_serverkey
         self._instance_name = instance_name
         self._bind_web_address = bind_web_address
@@ -137,8 +132,7 @@ class Router(BaseRouter):
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
-            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"]
-                    and self._secretkey):
+            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"] and self._secretkey):
                 address.server = "CURVE"
                 address.secretkey = self._secretkey
             if not address.domain:
@@ -182,14 +176,12 @@ class Router(BaseRouter):
                 # Initialize a ZMQ IPC socket on which to publish all messages to MessageDebuggerAgent.
                 socket_path = os.path.expandvars("$VOLTTRON_HOME/run/messagedebug")
                 socket_path = os.path.expanduser(socket_path)
-                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") +
-                               socket_path)
+                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") + socket_path)
                 self._message_debugger_socket = zmq.Context().socket(zmq.PUB)
                 self._message_debugger_socket.connect(socket_path)
             # Publish the routed message, including the "topic" (status/direction), for use by MessageDebuggerAgent.
             frame_bytes = [topic]
-            frame_bytes.extend(
-                frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
+            frame_bytes.extend(frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
             frame_bytes = serialize_frames(frames)
             # TODO we need to fix the msgdebugger socket if we need it to be connected
             # frame_bytes = [f.bytes for f in frame_bytes]
@@ -231,8 +223,7 @@ class Router(BaseRouter):
 
                 _log.debug("ROUTER received agent stop message. dropping peer: {}".format(drop))
             except IndexError:
-                _log.error(
-                    f"agentstop called but unable to determine agent from frames sent {frames}")
+                _log.error(f"agentstop called but unable to determine agent from frames sent {frames}")
             return False
         elif subsystem == "query":
             try:

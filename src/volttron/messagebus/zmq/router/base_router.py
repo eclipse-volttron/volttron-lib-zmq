@@ -30,7 +30,7 @@ import zmq
 from volttron.utils.frame_serialization import serialize_frames
 from zmq import EHOSTUNREACH, EINVAL, NOBLOCK, ZMQError
 
-from volttron.zmq.router.servicepeer import ServicePeerNotifier
+from volttron.messagebus.zmq.router.servicepeer import ServicePeerNotifier
 
 __all__ = ["BaseRouter", "OUTGOING", "INCOMING", "UNROUTABLE", "ERROR"]
 
