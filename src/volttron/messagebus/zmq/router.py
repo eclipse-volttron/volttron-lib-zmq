@@ -1,27 +1,24 @@
 import logging
 import os
 import sys
+import uuid
 from typing import Optional
 from urllib.parse import urlparse
-import uuid
 
 import zmq
-from zmq import ZMQError, NOBLOCK
-
-from volttron.utils import serialize_frames, deserialize_frames, jsonapi
-from volttron.utils.logs import FramesFormatter
-
-
-from .base_router import BaseRouter, UNROUTABLE, ERROR, INCOMING
-
-#from volttron.services.routing import ExternalRPCService, PubSubService
-
-from volttron.types import PeerNotifier
+#from volttron.platform.curve.keystore import KeyStore
 #from volttron.services.routing import RoutingService
 from volttron.server.monitor import Monitor
+from volttron.types.peer import ServicePeerNotifier
+from volttron.utils import deserialize_frames, jsonapi, serialize_frames
+from volttron.utils.logs import FramesFormatter
+from zmq import NOBLOCK, ZMQError
+
+from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
 from .pubsub import PubSubService
 from .socket import Address
-from volttron.platform.curve.keystore import KeyStore
+
+#from volttron.services.routing import ExternalRPCService, PubSubService
 
 # from ..server import __version__
 
@@ -46,7 +43,7 @@ class Router(BaseRouter):
         external_address_file="",
         msgdebug=None,
         agent_monitor_frequency=600,
-        service_notifier: Optional[PeerNotifier] = None,
+        service_notifier: Optional[ServicePeerNotifier] = None,
     ):
 
         super(Router, self).__init__(
@@ -102,8 +99,7 @@ class Router(BaseRouter):
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
-            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"]
-                    and self._secretkey):
+            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"] and self._secretkey):
                 address.server = "CURVE"
                 address.secretkey = self._secretkey
             if not address.domain:
@@ -147,14 +143,12 @@ class Router(BaseRouter):
                 # Initialize a ZMQ IPC socket on which to publish all messages to MessageDebuggerAgent.
                 socket_path = os.path.expandvars("$VOLTTRON_HOME/run/messagedebug")
                 socket_path = os.path.expanduser(socket_path)
-                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") +
-                               socket_path)
+                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") + socket_path)
                 self._message_debugger_socket = zmq.Context().socket(zmq.PUB)
                 self._message_debugger_socket.connect(socket_path)
             # Publish the routed message, including the "topic" (status/direction), for use by MessageDebuggerAgent.
             frame_bytes = [topic]
-            frame_bytes.extend(
-                frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
+            frame_bytes.extend(frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
             frame_bytes = serialize_frames(frames)
             # TODO we need to fix the msgdebugger socket if we need it to be connected
             # frame_bytes = [f.bytes for f in frame_bytes]
@@ -196,8 +190,7 @@ class Router(BaseRouter):
 
                 _log.debug("ROUTER received agent stop message. dropping peer: {}".format(drop))
             except IndexError:
-                _log.error(
-                    f"agentstop called but unable to determine agent from frames sent {frames}")
+                _log.error(f"agentstop called but unable to determine agent from frames sent {frames}")
             return False
         elif subsystem == "query":
             try:

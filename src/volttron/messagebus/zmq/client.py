@@ -36,38 +36,35 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
+import bisect
 import logging
-from dataclasses import dataclass
 import os
 import random
 import uuid
-import bisect
-from urllib.parse import urlsplit, parse_qs, urlunsplit, urlparse
+from dataclasses import dataclass
+from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
+
 import gevent
 import gevent.time
-from zmq import green as zmq
-from volttron.platform.auth.auth_protocols import *
-from volttron.platform import get_home
-from volttron.platform import jsonapi
-from volttron.platform.auth import BaseServerAuthentication
+#from volttron.platform.agent.utils import (get_fq_identity, get_platform_instance_name)
+from volttron.platform.auth import (BaseAuthentication, BaseClientAuthorization, BaseServerAuthentication)
 from volttron.platform.auth.auth_entry import AuthEntry
 from volttron.platform.auth.auth_exception import AuthException
 from volttron.platform.auth.auth_utils import dump_user
-from volttron.platform.keystore import KeyStore, KnownHostsStore
-from volttron.platform.parameters import Parameters
-from volttron.platform.vip.socket import encode_key
-from volttron.platform.agent.utils import (
-    get_platform_instance_name,
-    get_fq_identity,
-)
-
-from volttron.types import ConnectionParameters
+#from volttron.types import ConnectionParameters
+from volttron.utils import jsonapi
+#from volttron.platform.auth.auth_protocols import *
+#from volttron.platform import get_home
+from volttron.utils.context import ClientContext as cc
+#from volttron.platform.parameters import Parameters
+from volttron.utils.keystore import KeyStore, KnownHostsStore, encode_key
+from zmq import green as zmq
 
 _log = logging.getLogger(__name__)
 
 
 @dataclass
-class ZMQClientParameters(ConnectionParameters):
+class ZMQClientParameters:
     publickey: str = None
     secretkey: str = None
     serverkey: str = None
@@ -79,6 +76,7 @@ class ZMQClientParameters(ConnectionParameters):
 # ZMQServerAuthorization - Approve, deny, delete certs
 # ZMQParameters(Parameters)
 class ZMQClientAuthentication(BaseAuthentication):
+
     def __init__(self, params):
         self.params = params
         self.address = self.params.address
@@ -125,16 +123,13 @@ class ZMQClientAuthentication(BaseAuthentication):
         if self.agent_uuid:
             # this is an installed agent, put keystore in its dist-info
             current_directory = os.path.abspath(os.curdir)
-            keystore_dir = os.path.join(current_directory,
-                                        "{}.dist-info".format(os.path.basename(current_directory)))
+            keystore_dir = os.path.join(current_directory, "{}.dist-info".format(os.path.basename(current_directory)))
         elif self.identity is None:
             raise ValueError("Agent's VIP identity is not set")
         else:
             if not self.volttron_home:
                 raise ValueError('VOLTTRON_HOME must be specified.')
-            keystore_dir = os.path.join(
-                self.volttron_home, 'keystores',
-                self.identity)
+            keystore_dir = os.path.join(self.volttron_home, 'keystores', self.identity)
 
         keystore_path = os.path.join(keystore_dir, 'keystore.json')
         keystore = KeyStore(keystore_path)
@@ -151,11 +146,9 @@ class ZMQClientAuthentication(BaseAuthentication):
             self.serverkey = self._get_keys_from_addr()[2]
         known_serverkey = self._get_serverkey_from_known_hosts()
 
-        if (self.serverkey is not None and known_serverkey is not None
-                and self.serverkey != known_serverkey):
+        if (self.serverkey is not None and known_serverkey is not None and self.serverkey != known_serverkey):
             raise Exception("Provided server key ({}) for {} does "
-                            "not match known serverkey ({}).".format(
-                self.serverkey, self.address, known_serverkey))
+                            "not match known serverkey ({}).".format(self.serverkey, self.address, known_serverkey))
 
         # Until we have containers for agents we should not require all
         # platforms that connect to be in the known host file.
@@ -177,8 +170,7 @@ class ZMQClientAuthentication(BaseAuthentication):
         return publickey, secretkey, serverkey
 
 
-
-
 class ZMQClientAuthorization(BaseClientAuthorization):
+
     def __init__(self, auth_service):
         super().__init__(auth_service)

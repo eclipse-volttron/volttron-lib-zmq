@@ -32,13 +32,14 @@ from urllib.parse import urlparse
 import zmq
 from volttron.client.known_identities import CONTROL
 from volttron.server.monitor import Monitor
-from volttron.services.routing import (ExternalRPCService, PubSubService, RoutingService)
 from volttron.types.peer import ServicePeerNotifier
 from volttron.utils import deserialize_frames, jsonapi, serialize_frames
 from volttron.utils.keystore import KeyStore
 from volttron.utils.logs import FramesFormatter
 from volttron.utils.socket import Address
 from zmq import NOBLOCK, ZMQError
+
+from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
 
 from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
 

@@ -36,16 +36,14 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
-import os
 import logging
+import os
 from typing import Optional
 
 import zmq.green as zmq
+from volttron.types.peer import ServicePeerNotifier
 # import zmq
-from zmq import NOBLOCK, ZMQError, EINVAL, EHOSTUNREACH
-
-from volttron.server.servicepeer import ServicePeerNotifier
-from volttron.utils.frame_serialization import serialize_frames
+from zmq import EHOSTUNREACH, EINVAL, NOBLOCK, ZMQError
 
 __all__ = ["BaseRouter", "OUTGOING", "INCOMING", "UNROUTABLE", "ERROR"]
 
@@ -133,8 +131,7 @@ class BaseRouter(object):
         sock.tcp_keepalive_cnt = 6
         self.context.set(zmq.MAX_SOCKETS, 30690)
         sock.set_hwm(6000)
-        _log.debug("ROUTER SENDBUF: {0}, {1}".format(sock.getsockopt(zmq.SNDBUF),
-                                                     sock.getsockopt(zmq.RCVBUF)))
+        _log.debug("ROUTER SENDBUF: {0}, {1}".format(sock.getsockopt(zmq.SNDBUF), sock.getsockopt(zmq.RCVBUF)))
         self.setup()
 
     def stop(self, linger=1):
