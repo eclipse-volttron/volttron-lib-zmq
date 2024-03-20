@@ -35,23 +35,33 @@
 # BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
 # under Contract DE-AC05-76RL01830
 # }}}
+import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 import zmq.green as zmq
-import logging
+from volttron.types import Message
+from volttron.types.bases import Connection
 
-from volttron.types import BaseConnection, ConnectionContext
-from .connection import ZmqConnectionContext
-
-from . green import Socket as GreenSocket
+from .green import Socket as GreenSocket
 
 # TODO ADD BACK rmq
 # from volttron.client.vip.rmq_connection import BaseConnection
 _log = logging.getLogger(__name__)
 
 
-class ZMQConnection(BaseConnection):
+@dataclass
+class ZmqConnectionContext:
+    address: Optional[str] = None
+    identity: Optional[str] = None
+    publickey: Optional[str] = None
+    secretkey: Optional[str] = None
+    serverkey: Optional[str] = None
+    agent_uuid: Optional[str] = None
+    reconnect_interval: Optional[int] = None
+
+
+class ZmqConnection(Connection):
     """
     Maintains ZMQ socket connection
     """
@@ -65,6 +75,18 @@ class ZMQConnection(BaseConnection):
         self._identity = self._conn_context.identity
         self._logger = logging.getLogger(__name__)
         self._logger.debug(f"ZMQ connection {self._identity}")
+
+    def connected(self) -> bool:
+        ...
+
+    def is_connected(self) -> bool:
+        ...
+
+    def send_vip_message(self, message: Message):
+        ...
+
+    def recieve_vip_message(self) -> Message:
+        ...
 
     def open_connection(self, type):
         if type == zmq.DEALER:
