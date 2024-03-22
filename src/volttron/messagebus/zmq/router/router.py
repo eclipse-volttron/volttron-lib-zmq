@@ -33,7 +33,7 @@ import zmq
 from volttron.client.known_identities import CONTROL
 from volttron.server.monitor import Monitor
 from volttron.types.peer import ServicePeerNotifier
-from volttron.utils import deserialize_frames, jsonapi, serialize_frames
+from volttron.utils import (decode_key, deserialize_frames, jsonapi, serialize_frames)
 from volttron.utils.keystore import KeyStore
 from volttron.utils.logs import FramesFormatter
 from volttron.utils.socket import Address
@@ -51,6 +51,7 @@ class Router(BaseRouter):
 
     def __init__(
         self,
+        *,
         local_address,
         addresses=(),
         context=None,
@@ -59,10 +60,7 @@ class Router(BaseRouter):
         default_user_id=None,
         monitor=False,
         tracker=None,
-        volttron_central_address=None,
         instance_name=None,
-        bind_web_address=None,
-        volttron_central_serverkey=None,
         protected_topics={},
         external_address_file="",
         msgdebug=None,
@@ -78,28 +76,18 @@ class Router(BaseRouter):
         self.local_address = Address(local_address)
         self._addr = addresses
         self.addresses = addresses = [Address(addr) for addr in set(addresses)]
-        self._secretkey = secretkey
-        self._publickey = publickey
+
+        self._secretkey = decode_key(secretkey)
+        self._publickey = decode_key(publickey)
         self.logger = logging.getLogger("vip.router")
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.DEBUG)    # .WARNING)
         self._monitor = monitor
         self._tracker = tracker
-        self._volttron_central_address = volttron_central_address
-        if self._volttron_central_address:
-            parsed = urlparse(self._volttron_central_address)
-
-            assert parsed.scheme in (
-                "http",
-                "https",
-                "tcp",
-                "amqp",
-            ), "volttron central address must begin with http(s) or tcp found"
-            if parsed.scheme == "tcp":
-                assert (volttron_central_serverkey), "volttron central serverkey must be set if address is tcp."
-        self._volttron_central_serverkey = volttron_central_serverkey
+        self._volttron_central_address = None
+        self._volttron_central_serverkey = None
         self._instance_name = instance_name
-        self._bind_web_address = bind_web_address
+        self._bind_web_address = None
         self._protected_topics = protected_topics
         self._external_address_file = external_address_file
         self._pubsub = None

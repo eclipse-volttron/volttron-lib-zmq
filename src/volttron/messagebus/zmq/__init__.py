@@ -65,8 +65,7 @@ import zmq.green as zmq
 from volttron.server.containers import service_repo
 from volttron.server.decorators import messagebus
 from volttron.server.server_options import ServerOptions
-from volttron.types.auth import (Authenticator, AuthService, Credentials, CredentialsCreator, CredentialsStore,
-                                 IdentityAlreadyExists, IdentityNotFound, PKICredentials)
+from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
 from volttron.types.bases import MessageBus
 from volttron.types.message import Message
 from volttron.types.peer import ServicePeerNotifier
@@ -85,18 +84,23 @@ def zmq_router(opts: argparse.Namespace, notifier, secretkey, publickey, tracker
                external_address_file, stop):
     try:
         _log.debug("Running zmq router")
+        _log.debug(f"Opts: {opts}")
+        _log.debug(f"Notifier: {notifier}")
+        _log.debug(f"Secretkey: {secretkey}")
+        _log.debug(f"Publickey: {publickey}")
+        _log.debug(f"Tracker: {tracker}")
+        _log.debug(f"Protected Topics: {protected_topics}")
+        _log.debug(f"External Address: {external_address_file}")
+        _log.debug(f"Stop: {stop}")
         Router(
-            opts.vip_local_address,
-            opts.vip_address,
+            local_address=opts.local_address,
+            addresses=opts.address,
             secretkey=secretkey,
             publickey=publickey,
             default_user_id="vip.service",
             monitor=opts.monitor,
             tracker=tracker,
-            volttron_central_address=opts.volttron_central_address,
-            volttron_central_serverkey=opts.volttron_central_serverkey,
             instance_name=opts.instance_name,
-            bind_web_address=opts.bind_web_address,
             protected_topics=protected_topics,
             external_address_file=external_address_file,
             msgdebug=opts.msgdebug,

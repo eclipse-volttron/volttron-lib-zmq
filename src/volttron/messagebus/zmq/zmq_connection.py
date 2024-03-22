@@ -27,8 +27,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 import zmq
-from volttron.types import Message
 from volttron.types.bases import Connection
+from volttron.types.message import Message
 
 from volttron.messagebus.zmq.green import Socket as GreenSocket
 

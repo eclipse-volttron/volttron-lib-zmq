@@ -1,0 +1,84 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "vctl -vv peerlist",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "volttron.client.commands.control",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--json",
+                "peerlist"
+            ],
+            "env": {
+                "GEVENT_SUPPORT": "True",
+                "VOLTTRON_HOME": "~/.volttron_redo",
+                "PYTHONPATH": "/home/os2204/repos/volttron-redo/volttron-lib-auth/src"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "vctl -vv status",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "volttron.client.commands.control",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "-vv",
+                "status"
+            ],
+            "env": {
+                "GEVENT_SUPPORT": "True",
+                "VOLTTRON_HOME": "~/.volttron_redo",
+                "PYTHONPATH": "/home/os2204/repos/volttron-redo/volttron-lib-auth/src"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "volttron -vv",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "volttron.server",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "-vv"
+            ],
+            "env": {
+                "GEVENT_SUPPORT": "True",
+                "VOLTTRON_HOME": "~/.volttron_redo",
+                "PYTHONPATH": "/home/os2204/repos/volttron-redo/volttron-lib-auth/src"
+            },
+            "subProcess": true,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "${file}"
+            ],
+            "env": {
+                "GEVENT_SUPPORT": "True",
+                "VOLTTRON_HOME": "~/.volttron_redo"
+            }
+        }
+    ]
+}
