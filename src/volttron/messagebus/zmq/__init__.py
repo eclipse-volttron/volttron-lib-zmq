@@ -72,6 +72,7 @@ from volttron.types.peer import ServicePeerNotifier
 from volttron.utils.keystore import encode_key
 from volttron.utils.logs import logtrace
 
+import volttron.messagebus.zmq.credentials_creator
 from volttron.messagebus.zmq.router import Router
 from volttron.messagebus.zmq.zmq_connection import ZmqConnection
 from volttron.messagebus.zmq.zmq_core import ZmqCore
@@ -118,13 +119,26 @@ def zmq_router(opts: argparse.Namespace, notifier, secretkey, publickey, tracker
 
 @messagebus
 class ZmqMessageBus(MessageBus):
+    from volttron.types.auth.auth_credentials import CredentialsStore
 
-    def __init__(self, opts: argparse.Namespace, notifier, secretkey, publickey, tracker, protected_topics,
-                 external_address_file, stop):
+    def __init__(self,
+                 opts: argparse.Namespace,
+                 notifier,
+                 tracker,
+                 protected_topics,
+                 external_address_file,
+                 stop,
+                 credentials_store: Optional[CredentialsStore] = None):
+
+        # cred_service = service_repo.resolve(CredentialsStore)
+        # server_creds = cred_service.retrieve_credentials(identity="server")
+        if credentials_store is not None:
+            creds = credentials_store.retrieve_credentials(identity="server")
+            self._publickey = creds.publickey
+            self._secretkey = creds.secretkey
+
         self._opts = opts
         self._notifier = notifier
-        self._secretkey = secretkey
-        self._publickey = publickey
         self._tracker = tracker
         self._protected_topics = protected_topics
         self._external_address_file = external_address_file

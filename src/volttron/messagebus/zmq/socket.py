@@ -560,7 +560,8 @@ class _Socket(object):
     def recv_vip_object(self, flags=0, copy=True, track=False):
         """Recieve a complete VIP message and return as an object."""
         msg = Message()
-        msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        #msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
         return msg
 
     def bind(self, addr):
@@ -573,5 +574,6 @@ class _Socket(object):
         """Extended zmq.Socket.connect() to include options in addr."""
         if not isinstance(addr, Address):
             addr = Address(addr)
+
         _log.debug(f"connect: {addr}")
         addr.connect(self, super(_Socket, self).connect)
