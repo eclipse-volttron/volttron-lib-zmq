@@ -278,6 +278,7 @@ class BaseRouter(object):
             # Handle requests directed at the router
             name = subsystem
             if name == "hello":
+                #frames = [sender, recipient, proto, '', '', '', '', '', '', '']
                 frames = [
                     sender,
                     recipient,

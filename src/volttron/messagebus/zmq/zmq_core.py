@@ -350,11 +350,11 @@ class ZmqCore(Core):
                     else:
                         raise
                 subsystem = message.subsystem
-                # _log.debug("Received new message {0}, {1}, {2}, {3}".format(
-                #     subsystem, message.id, len(message.args), message.args[0]))
+                _log.debug("Received new message {0}, {1}, {2}, {3}".format(subsystem, message.id, len(message.args),
+                                                                            message.args[0]))
 
                 # Handle hellos sent by CONNECTED event
-                if (str(subsystem) == "hello" and message.msg_id == state.ident and len(message.args) > 3
+                if (str(subsystem) == "hello" and message.id == state.ident and len(message.args) > 3
                         and message.args[0] == "welcome"):
                     version, server, identity = message.args[1:4]
                     assert self._connection.connected
@@ -879,7 +879,7 @@ if __name__ == '__main__':
 #     # the event when we hear the response to the hello message.
 #     delay_onstart_signal = True
 #     # Agents started before the router can set this variable
-#     # to false to keep from blocking. AuthService does this.
+#     # to false to keep from blocking. AuthSerookce does this.
 #     delay_running_event_set = True
 
 #     def __init__(

@@ -116,7 +116,6 @@ class ZmqConnection(Connection):
             self._socket.setsockopt(zmq.RECONNECT_IVL, reconnect_interval)
 
     def connect(self, callback=None):
-        self.open_connection(type=zmq.DEALER)
 
         from volttron.messagebus.zmq.keystore import encode_key
 

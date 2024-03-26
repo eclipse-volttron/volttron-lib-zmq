@@ -560,8 +560,8 @@ class _Socket(object):
     def recv_vip_object(self, flags=0, copy=True, track=False):
         """Recieve a complete VIP message and return as an object."""
         msg = Message()
-        data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
-        #msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        #data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
         return msg
 
     def bind(self, addr):
