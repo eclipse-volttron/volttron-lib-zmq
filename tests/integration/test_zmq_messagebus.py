@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.DEBUG)
 def server_creds():
     gen = ZmqCredentialGenerator()
 
-    yield gen.generate("server")
+    yield gen.generate("platform")
 
 
 @pytest.fixture

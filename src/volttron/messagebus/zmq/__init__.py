@@ -133,7 +133,7 @@ class ZmqMessageBus(MessageBus):
         # cred_service = service_repo.resolve(CredentialsStore)
         # server_creds = cred_service.retrieve_credentials(identity="server")
         if credentials_store is not None:
-            creds = credentials_store.retrieve_credentials(identity="server")
+            creds = credentials_store.retrieve_credentials(identity="platform")
             self._publickey = creds.publickey
             self._secretkey = creds.secretkey
 

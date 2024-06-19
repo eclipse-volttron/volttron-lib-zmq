@@ -74,7 +74,7 @@ class ZmqCoreBuilder(CoreBuilder):
             # if the credential store is present then we know we are on the server and
             # can utilize33 the credential store.
             credstore = service_repo.resolve(CredentialsStore)
-            server_creds = credstore.retrieve_credentials(identity="server")
+            server_creds = credstore.retrieve_credentials(identity="platform")
         except Unresolvable:
             # The exception is where we are a client connecting to the server.  This will
             # allow us to use some context in order to gain access to credentials.
@@ -138,6 +138,7 @@ class ZmqCore(Core):
                                                         secretkey=self.secretkey,
                                                         serverkey=self.serverkey,
                                                         reconnect_interval=reconnect_interval)
+        _log.debug(f"ZmqCore Connection Context: {self._connection_context}")
         self.reconnect_interval = reconnect_interval
         self.address = address
 
@@ -352,6 +353,7 @@ class ZmqCore(Core):
                 subsystem = message.subsystem
                 _log.debug("Received new message {0}, {1}, {2}, {3}".format(subsystem, message.id, len(message.args),
                                                                             message.args[0]))
+                _log.debug(f"Message is: {message}")
 
                 # Handle hellos sent by CONNECTED event
                 if (str(subsystem) == "hello" and message.id == state.ident and len(message.args) > 3
