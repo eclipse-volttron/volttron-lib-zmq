@@ -47,10 +47,10 @@ from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 import gevent
 import gevent.time
 #from volttron.platform.agent.utils import (get_fq_identity, get_platform_instance_name)
-from volttron.platform.auth import (BaseAuthentication, BaseClientAuthorization, BaseServerAuthentication)
-from volttron.platform.auth.auth_entry import AuthEntry
-from volttron.platform.auth.auth_exception import AuthException
-from volttron.platform.auth.auth_utils import dump_user
+# from volttron.platform.auth import (BaseAuthentication, BaseClientAuthorization, BaseServerAuthentication)
+# from volttron.platform.auth.auth_entry import AuthEntry
+# from volttron.platform.auth.auth_exception import AuthException
+# from volttron.platform.auth.auth_utils import dump_user
 #from volttron.types import ConnectionParameters
 from volttron.utils import jsonapi
 #from volttron.platform.auth.auth_protocols import *

@@ -39,8 +39,9 @@ from volttron.utils.logs import FramesFormatter
 from volttron.utils.socket import Address
 from zmq import NOBLOCK, ZMQError
 
+from volttron.server.containers import service_repo
 from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
-
+from volttron.client.known_identities import PLATFORM
 from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
 
 _log = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ class Router(BaseRouter):
         local_address,
         addresses=(),
         context=None,
-        secretkey=None,
-        publickey=None,
+        # secretkey=None,
+        # publickey=None,
         default_user_id=None,
         monitor=False,
         tracker=None,
@@ -65,7 +66,8 @@ class Router(BaseRouter):
         external_address_file="",
         msgdebug=None,
         agent_monitor_frequency=600,
-        service_notifier=Optional[ServicePeerNotifier],
+        service_notifier: ServicePeerNotifier | None = None,
+        auth_enabled: bool = False
     ):
 
         super(Router, self).__init__(
@@ -77,8 +79,8 @@ class Router(BaseRouter):
         self._addr = addresses
         self.addresses = addresses = [Address(addr) for addr in set(addresses)]
 
-        self._secretkey = decode_key(secretkey)
-        self._publickey = decode_key(publickey)
+        # self._secretkey = decode_key(secretkey)
+        # self._publickey = decode_key(publickey)
         self.logger = logging.getLogger("vip.router")
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.DEBUG)    # .WARNING)
@@ -96,8 +98,10 @@ class Router(BaseRouter):
         self._message_debugger_socket = None
         self._instance_name = instance_name
         self._agent_monitor_frequency = agent_monitor_frequency
+        self._auth_enabled = auth_enabled
 
     def setup(self):
+
         sock = self.socket
         identity = str(uuid.uuid4())
         sock.identity = identity.encode("utf-8")
@@ -113,17 +117,24 @@ class Router(BaseRouter):
         if not addr.domain:
             addr.domain = "vip"
 
-        addr.server = "CURVE"
-        addr.secretkey = self._secretkey
+        from volttron.types.auth import CredentialsStore
+        credential_store: CredentialsStore | None = None
 
-        addr.bind(sock)
+        if self._auth_enabled:
+            credential_store = service_repo.resolve(CredentialsStore)
+            secretkey = decode_key(credential_store.retrieve_credentials(identity=PLATFORM).secretkey)
+            addr.server = "CURVE"
+            addr.secretkey = secretkey
+            addr.bind(sock)
+
         _log.debug("Local VIP router bound to %s" % addr)
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
-            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"] and self._secretkey):
+            if self._auth_enabled:
+                secretkey = decode_key(credential_store.retrieve_credentials(identity=PLATFORM).secretkey)
                 address.server = "CURVE"
-                address.secretkey = self._secretkey
+                address.secretkey = secretkey
             if not address.domain:
                 address.domain = "vip"
             address.bind(sock)

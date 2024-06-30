@@ -100,7 +100,7 @@ class ZmqConnection(Connection):
         _log.debug(f"Waiting for message recv")
         return self.recv_vip_object()
 
-    def open_connection(self, type):
+    def open_connection(self, type = None):
         if type == zmq.DEALER:
             self._socket = GreenSocket(self._zmq_context)
             if self._identity:
