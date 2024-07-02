@@ -147,7 +147,6 @@ class FileBasedCredentialStore(CredentialsStore):
 
         return None
 
-
     def remove_credentials(self, *, identity: str) -> None:
         """
         Delete the credentials for an identity.
@@ -161,3 +160,6 @@ class FileBasedCredentialStore(CredentialsStore):
             raise IdentityNotFound(identity)
         path.unlink()
         assert path.exists() is False
+
+        k, v = next(filter(lambda x: x[1]["identity"] == identity, self._publickey_map.items()))
+        self._publickey_map.pop(k)

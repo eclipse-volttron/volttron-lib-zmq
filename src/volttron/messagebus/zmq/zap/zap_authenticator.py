@@ -217,8 +217,8 @@ class ZapAuthenticator(Authenticator):
                                                                            address=address)
 
         if matched_credential:
-            #return dump_user(list(matched_credential.to_dict().values()))
-            return ", ".join(list(matched_credential.to_dict().values()))
+            return matched_credential.identity
+
 
         # for entry in self.auth_entries:
         #     if entry.match(domain, address, mechanism, credentials):
