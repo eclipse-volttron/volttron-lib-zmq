@@ -212,14 +212,13 @@ class ZapAuthenticator(Authenticator):
 
         _log.debug(f"AUTH: domain={domain}, address={address}, credentials={credentials}")
 
-        matched_credentials = self._credentials_store.retrieve_credentials(publickey=credentials, domain=domain, address=address)
+        matched_credential = self._credentials_store.retrieve_credentials(publickey=credentials,
+                                                                           domain=domain,
+                                                                           address=address)
 
-        if matched_credentials:
-            return dump_user(matched_credentials['identity'])
-
-
-
-
+        if matched_credential:
+            #return dump_user(list(matched_credential.to_dict().values()))
+            return ", ".join(list(matched_credential.to_dict().values()))
 
         # for entry in self.auth_entries:
         #     if entry.match(domain, address, mechanism, credentials):

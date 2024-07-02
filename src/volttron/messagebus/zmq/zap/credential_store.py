@@ -63,7 +63,7 @@ class FileBasedCredentialStore(CredentialsStore):
             self._credentials_repository = Path(credentials_store_repository)
 
         self._credentials_repository.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self._publickey_map: dict[PublicKey, Identity] = {}
+        self._publickey_map: dict[PubKey, Identity] = {}
         for d in self._credentials_repository.glob("*.json"):
             cfg = json.loads(d.read_text())
             self._publickey_map[cfg['publickey']] = cfg
@@ -124,7 +124,11 @@ class FileBasedCredentialStore(CredentialsStore):
         path = self._get_credentials_path(identity=credentials.identity)
         if path.exists():
             raise IdentityAlreadyExists(credentials.identity)
-        path.open("wt").write(credentials.to_json())
+        json_str = credentials.to_json()
+        cfg = json.loads(json_str)
+        path.open("wt").write(json_str)
+        self._publickey_map[cfg['publickey']] = cfg
+
 
     def retrieve_credentials(self, **kwargs) -> Credentials:
         """
@@ -138,12 +142,8 @@ class FileBasedCredentialStore(CredentialsStore):
             return self._get_from_file(identity=identity, credentials_type=self.get_credentials_type())
         elif publickey:
             obj = self._publickey_map[publickey]
-
-            # for k, v in kwargs.items():
-            #     if k not in obj or v != obj[k]:
-            #         return None
-
-            return obj
+            instance = self.get_credentials_type().from_json(json.dumps(obj))
+            return instance
 
         return None
 
