@@ -33,10 +33,11 @@ import zmq
 from volttron.client.known_identities import CONTROL
 from volttron.server.monitor import Monitor
 from volttron.types.peer import ServicePeerNotifier
-from volttron.utils import (decode_key, deserialize_frames, jsonapi, serialize_frames)
-from volttron.utils.keystore import KeyStore
+from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
+from volttron.messagebus.zmq.keystore import encode_key, decode_key
+from volttron.utils import jsonapi
 from volttron.utils.logs import FramesFormatter
-from volttron.utils.socket import Address
+from volttron.messagebus.zmq.socket import Address
 from zmq import NOBLOCK, ZMQError
 
 from volttron.server.containers import service_repo
@@ -51,23 +52,21 @@ class Router(BaseRouter):
     """Concrete VIP router."""
 
     def __init__(
-        self,
-        *,
-        local_address,
-        addresses=(),
-        context=None,
-        # secretkey=None,
-        # publickey=None,
-        default_user_id=None,
-        monitor=False,
-        tracker=None,
-        instance_name=None,
-        protected_topics={},
-        external_address_file="",
-        msgdebug=None,
-        agent_monitor_frequency=600,
-        service_notifier: ServicePeerNotifier | None = None,
-        auth_enabled: bool = False
+            self,
+            *,
+            local_address,
+            addresses=(),
+            context=None,
+            default_user_id=None,
+            monitor=False,
+            tracker=None,
+            instance_name=None,
+            protected_topics={},
+            external_address_file="",
+            msgdebug=None,
+            agent_monitor_frequency=600,
+            service_notifier: ServicePeerNotifier | None = None,
+            auth_enabled: bool = False
     ):
 
         super(Router, self).__init__(
@@ -83,7 +82,7 @@ class Router(BaseRouter):
         # self._publickey = decode_key(publickey)
         self.logger = logging.getLogger("vip.router")
         if self.logger.level == logging.NOTSET:
-            self.logger.setLevel(logging.DEBUG)    # .WARNING)
+            self.logger.setLevel(logging.DEBUG)  # .WARNING)
         self._monitor = monitor
         self._tracker = tracker
         self._volttron_central_address = None
@@ -181,7 +180,7 @@ class Router(BaseRouter):
                 self._message_debugger_socket.connect(socket_path)
             # Publish the routed message, including the "topic" (status/direction), for use by MessageDebuggerAgent.
             frame_bytes = [topic]
-            frame_bytes.extend(frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
+            frame_bytes.extend(frames)  # [frame if type(frame) is bytes else frame.bytes for frame in frames])
             frame_bytes = serialize_frames(frames)
             # TODO we need to fix the msgdebugger socket if we need it to be connected
             # frame_bytes = [f.bytes for f in frame_bytes]

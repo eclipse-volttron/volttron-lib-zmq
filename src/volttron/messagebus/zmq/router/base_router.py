@@ -27,7 +27,7 @@ import os
 from typing import Optional
 
 import zmq
-from volttron.utils.frame_serialization import serialize_frames
+from volttron.messagebus.zmq.serialize_frames import serialize_frames
 from zmq import EHOSTUNREACH, EINVAL, NOBLOCK, ZMQError
 
 from volttron.messagebus.zmq.router.servicepeer import ServicePeerNotifier
@@ -75,10 +75,10 @@ class BaseRouter(object):
     _poller_class = zmq.Poller
 
     def __init__(
-        self,
-        context=None,
-        default_user_id=None,
-        service_notifier=Optional[ServicePeerNotifier],
+            self,
+            context=None,
+            default_user_id=None,
+            service_notifier=Optional[ServicePeerNotifier],
     ):
         """Initialize the object instance.
 
@@ -278,7 +278,7 @@ class BaseRouter(object):
             # Handle requests directed at the router
             name = subsystem
             if name == "hello":
-                #frames = [sender, recipient, proto, '', '', '', '', '', '', '']
+                # frames = [sender, recipient, proto, '', '', '', '', '', '', '']
                 frames = [
                     sender,
                     recipient,

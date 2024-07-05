@@ -9,7 +9,6 @@ from zmq.utils import z85
 
 @credentials_creator
 class ZapCredentialsCreator(CredentialsCreator):
-
     class Meta:
         name = "zmq"
 

@@ -40,17 +40,17 @@ _log = logging.getLogger(__name__)
 BASE64_ENCODED_CURVE_KEY_LEN = 43
 
 
-def get_server_keys():
-    try:
-        # attempt to read server's keys. Should be used only by multiplatform connection and tests
-        # If agents such as forwarder attempt this in secure mode this will throw access violation exception
-        ks = KeyStore()
-    except IOError as e:
-        raise RuntimeError(
-            "Exception accessing server keystore. Agents must use agent's public and private key"
-            "to build dynamic agents when running in secure mode. Exception:{}".format(e))
+# def get_server_keys():
+#     try:
+#         # attempt to read server's keys. Should be used only by multiplatform connection and tests
+#         # If agents such as forwarder attempt this in secure mode this will throw access violation exception
+#         ks = KeyStore()
+#     except IOError as e:
+#         raise RuntimeError(
+#             "Exception accessing server keystore. Agents must use agent's public and private key"
+#             "to build dynamic agents when running in secure mode. Exception:{}".format(e))
 
-    return ks.public, ks.secret
+#     return ks.public, ks.secret
 
 
 def get_random_key(length: int = 65) -> str:

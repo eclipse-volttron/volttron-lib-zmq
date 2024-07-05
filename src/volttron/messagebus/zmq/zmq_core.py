@@ -17,11 +17,12 @@ from volttron.client.vip.agent import Core
 from volttron.server.containers import Unresolvable, service_repo
 from volttron.types.agent_context import AgentContext
 from volttron.types.auth.auth_credentials import (Credentials, CredentialsStore, PKICredentials)
-from volttron.types.bases import AbstractAgent, Connection, CoreLoop
+from volttron.types import AbstractAgent, Connection, CoreLoop
 from volttron.types.factories import ConnectionBuilder, CoreBuilder
 from zmq import ZMQError
 
 from volttron.messagebus.zmq.zmq_connection import (ZmqConnection, ZmqConnectionContext)
+from volttron.client.known_identities import PLATFORM
 
 # from volttron.messagebus.zmq.connection import ZmqConnectionContext
 # from volttron.messagebus.zmq.zmq_connection import ZMQConnection
@@ -74,7 +75,7 @@ class ZmqCoreBuilder(CoreBuilder):
             # if the credential store is present then we know we are on the server and
             # can utilize33 the credential store.
             credstore = service_repo.resolve(CredentialsStore)
-            server_creds = credstore.retrieve_credentials(identity="platform")
+            server_creds = credstore.retrieve_credentials(identity=PLATFORM)
         except Unresolvable:
             # The exception is where we are a client connecting to the server.  This will
             # allow us to use some context in order to gain access to credentials.
@@ -145,7 +146,7 @@ class ZmqCore(Core):
         self.identity = identity
         self.agent_uuid = agent_uuid
         self._context = zmq.Context.instance()
-        #self._set_keys_from_environment()
+        # self._set_keys_from_environment()
 
         _log.debug(f"AGENT RUNNING on ZMQ Core {self.identity}")
         _log.debug(f"keys: server: {self.serverkey} public: {self.publickey}, secret: {self.secretkey}")
@@ -190,8 +191,8 @@ class ZmqCore(Core):
     def _set_public_and_secret_keys(self):
         if self.publickey is None or self.secretkey is None:
             creds = json.loads(os.environ.get('VOLTTRON_CREDENTIAL'))
-            self.publickey = json.loads(creds['server_credential'])['public']    #  os.environ.get("AGENT_PUBLICKEY")
-            self.secretkey = json.loads(creds['server_credential'])['secret']    # os.environ.get("AGENT_SECRETKEY")
+            self.publickey = json.loads(creds['server_credential'])['public']  # os.environ.get("AGENT_PUBLICKEY")
+            self.secretkey = json.loads(creds['server_credential'])['secret']  # os.environ.get("AGENT_SECRETKEY")
             _log.debug(f"after setting agent private and public key {self.publickey} {self.secretkey}")
         if self.publickey is None or self.secretkey is None:
             self.publickey, self.secretkey, _ = self._get_keys_from_addr()
@@ -204,7 +205,7 @@ class ZmqCore(Core):
             _log.debug(f"server key from env {os.environ.get('VOLTTRON_SERVERKEY')}")
             creds = json.loads(os.environ.get('VOLTTRON_SERVER_CREDENTIAL'))
 
-            self.serverkey = json.loads(creds['server_credential'])['public']    #  os.environ.get("VOLTTRON_SERVERKEY")
+            self.serverkey = json.loads(creds['server_credential'])['public']  # os.environ.get("VOLTTRON_SERVERKEY")
 
         # TODO: This needs to move somewhere else that is not zmq dependent some mapping between host and creds.
         known_serverkey = self.serverkey
@@ -241,7 +242,7 @@ class ZmqCore(Core):
         # self.context.set(zmq.MAX_SOCKETS, 30690)
         # self.connection = ZMQConnection(self.address,
         #                                 self.identity,
-        #                                 self.instance_name,
+        #                                 self._instance_name,
         #                                 context=self._context)
         self._connection = ZmqConnection(self._connection_context, self._context)
 
@@ -275,7 +276,7 @@ class ZmqCore(Core):
             # self.context.socket()).
             from zmq.utils.monitor import recv_monitor_message
 
-            addr = "inproc://monitor.v-%d" % (id(self._socket), )
+            addr = "inproc://monitor.v-%d" % (id(self._socket),)
             _log.debug(f"Monitor socket {addr}")
             sock = None
             if self._socket is not None:
@@ -897,7 +898,7 @@ if __name__ == '__main__':
 #         agent_uuid=None,
 #         reconnect_interval=None,
 #         version="0.1",
-#         instance_name=None,
+#         _instance_name=None,
 #         messagebus=None,
 #     ):
 #         self.volttron_home = volttron_home
@@ -917,7 +918,7 @@ if __name__ == '__main__':
 #         self.serverkey = serverkey
 #         self.reconnect_interval = reconnect_interval
 #         self._reconnect_attempt = 0
-#         self.instance_name = instance_name
+#         self._instance_name = _instance_name
 #         self.messagebus = messagebus
 #         self.subsystems = {"error": self.handle_error}
 #         self.__connected = False
@@ -1045,7 +1046,7 @@ if __name__ == '__main__':
 #         agent_uuid=None,
 #         reconnect_interval=None,
 #         version="0.1",
-#         instance_name=None,
+#         _instance_name=None,
 #         messagebus="zmq",
 #     ):
 #         if volttron_home is None:
@@ -1063,7 +1064,7 @@ if __name__ == '__main__':
 #             agent_uuid=agent_uuid,
 #             reconnect_interval=reconnect_interval,
 #             version=version,
-#             instance_name=instance_name,
+#             _instance_name=_instance_name,
 #             messagebus=messagebus,
 #         )
 #         self.context = context or zmq.Context.instance()
@@ -1189,7 +1190,7 @@ if __name__ == '__main__':
 #             agent_uuid=None,
 #             reconnect_interval=None,
 #             version="0.1",
-#             instance_name=None,
+#             _instance_name=None,
 #             messagebus="rmq",
 #             volttron_central_address=None,
 #             volttron_central_instance_name=None,
@@ -1206,20 +1207,20 @@ if __name__ == '__main__':
 #                 agent_uuid=agent_uuid,
 #                 reconnect_interval=reconnect_interval,
 #                 version=version,
-#                 instance_name=instance_name,
+#                 _instance_name=_instance_name,
 #                 messagebus=messagebus,
 #             )
 #             self.volttron_central_address = volttron_central_address
 
 #             # TODO Look at this and see if we really need this here.
-#             # if instance_name is specified as a parameter in this calls it will be because it is
+#             # if _instance_name is specified as a parameter in this calls it will be because it is
 #             # a remote connection. So we load it from the platform configuration file
-#             if not instance_name:
-#                 self.instance_name = cc.get_instance_name()
+#             if not _instance_name:
+#                 self._instance_name = cc.get_instance_name()
 #             else:
-#                 self.instance_name = instance_name
+#                 self._instance_name = _instance_name
 
-#             assert (self.instance_name
+#             assert (self._instance_name
 #                     ), "Instance name must have been set in the platform config file."
 #             assert (not volttron_central_instance_name
 #                     ), "Please report this as volttron_central_instance_name shouldn't be passed."
@@ -1227,7 +1228,7 @@ if __name__ == '__main__':
 #             # self._event_queue = gevent.queue.Queue
 #             self._event_queue = Queue()
 
-#             self.rmq_user = ".".join([self.instance_name, self.identity])
+#             self.rmq_user = ".".join([self._instance_name, self.identity])
 
 #             _log.debug("AGENT RUNNING on RMQ Core {}".format(self.rmq_user))
 
@@ -1257,9 +1258,9 @@ if __name__ == '__main__':
 #                 raise ValueError("Agent's VIP identity is not set")
 #             else:
 #                 try:
-#                     if self.instance_name == cc.get_instance_name():
+#                     if self._instance_name == cc.get_instance_name():
 #                         param = self.rmq_mgmt.build_agent_connection(self.identity,
-#                                                                      self.instance_name)
+#                                                                      self._instance_name)
 #                     else:
 #                         param = self.rmq_mgmt.build_remote_connection_param(
 #                             self.rmq_user, self.rmq_address, True)
@@ -1276,7 +1277,7 @@ if __name__ == '__main__':
 #             self.connection = RMQConnection(
 #                 self.rmq_address,
 #                 self.identity,
-#                 self.instance_name,
+#                 self._instance_name,
 #                 reconnect_delay=self.rmq_mgmt.rmq_config.reconnect_delay(),
 #                 vc_url=self.volttron_central_address,
 #             )
@@ -1305,7 +1306,7 @@ if __name__ == '__main__':
 #                     bindings = self.rmq_mgmt.get_bindings("volttron")
 #                 except AttributeError:
 #                     bindings = None
-#                 router_user = router_key = "{inst}.{ident}".format(inst=self.instance_name,
+#                 router_user = router_key = "{inst}.{ident}".format(inst=self._instance_name,
 #                                                                    ident="router")
 #                 if bindings:
 #                     for binding in bindings:

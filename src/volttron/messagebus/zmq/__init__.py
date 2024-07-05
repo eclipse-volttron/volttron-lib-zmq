@@ -63,15 +63,13 @@ import zmq as _zmq
 import zmq.green as zmq
 
 from volttron.client.known_identities import PLATFORM
-#from volttron.client.vip.agent.core import Core
+# from volttron.client.vip.agent.core import Core
 from volttron.server.containers import service_repo
 from volttron.server.decorators import messagebus
 from volttron.server.server_options import ServerOptions
 from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
-from volttron.types.bases import MessageBus
-from volttron.types.message import Message
+from volttron.types import Message, MessageBus
 from volttron.types.peer import ServicePeerNotifier
-from volttron.utils.keystore import encode_key
 from volttron.utils.logs import logtrace
 
 import volttron.messagebus.zmq.zap
@@ -81,7 +79,6 @@ from volttron.messagebus.zmq.zmq_core import ZmqCore
 from volttron.client.known_identities import PLATFORM
 
 _log = logging.getLogger(__name__)
-_log.setLevel(logging.DEBUG)
 
 
 # Main loops
@@ -531,7 +528,7 @@ __all__: list[str] = ['ZmqConnection', 'ZmqCore']
 #                 default_user_id="vip.service",
 #             #monitor=opts.monitor,
 #             # tracker=tracker,
-#                 instance_name=self._options.instance_name,    # self.params.instance_name,
+#                 _instance_name=self._options._instance_name,    # self.params._instance_name,
 #             # protected_topics=protected_topics,
 #             # external_address_file=external_address_file,
 #             # msgdebug=opts.msgdebug,
@@ -892,7 +889,7 @@ __all__: list[str] = ['ZmqConnection', 'ZmqCore']
 #                 default_user_id="vip.service",
 #             #monitor=opts.monitor,
 #             # tracker=tracker,
-#                 instance_name="my_instance",    # self.params.instance_name,
+#                 _instance_name="my_instance",    # self.params._instance_name,
 #             # protected_topics=protected_topics,
 #             # external_address_file=external_address_file,
 #             # msgdebug=opts.msgdebug,

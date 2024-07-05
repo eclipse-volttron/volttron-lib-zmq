@@ -56,8 +56,8 @@ import uuid
 from contextlib import contextmanager
 
 import zmq.green as zmq
-from volttron.utils.frame_serialization import (deserialize_frames, serialize_frames)
-from volttron.utils.keystore import decode_key, encode_key
+from volttron.messagebus.zmq.serialize_frames import (deserialize_frames, serialize_frames)
+from volttron.messagebus.zmq.keystore import decode_key, encode_key
 from zmq import (DEALER, NOBLOCK, RCVMORE, ROUTER, SNDMORE, ZMQError, curve_keypair)
 
 __all__ = ["Address", "ProtocolError", "Message", "nonblocking"]
@@ -385,16 +385,16 @@ class _Socket(object):
             super(_Socket, self).send_multipart(parts, flags=flags, copy=copy, track=track)
 
     def send_vip(
-        self,
-        peer,
-        subsystem,
-        args=None,
-        msg_id="",
-        user="",
-        via=None,
-        flags=0,
-        copy=True,
-        track=False,
+            self,
+            peer,
+            subsystem,
+            args=None,
+            msg_id="",
+            user="",
+            via=None,
+            flags=0,
+            copy=True,
+            track=False,
     ):
         """Send an entire VIP multipartmessage by individual parts.
 
@@ -548,7 +548,7 @@ class _Socket(object):
         state = self._recv_state
         frames = self.recv_vip(flags=flags, copy=copy, track=track)
         via = frames.pop(0) if state == -1 else None
-        # from volttron.utils.frame_serialization import decode_frames
+        # from volttron.messagebus.zmq.serialize_frames import decode_frames
         # decoded = decode_frames(frames)
 
         myframes = deserialize_frames(frames)
@@ -560,7 +560,7 @@ class _Socket(object):
     def recv_vip_object(self, flags=0, copy=True, track=False):
         """Recieve a complete VIP message and return as an object."""
         msg = Message()
-        #data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        # data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
         msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
         return msg
 

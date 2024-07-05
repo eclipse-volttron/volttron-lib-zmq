@@ -8,9 +8,9 @@ from volttron.types.auth import Credentials, CredentialsCreator, PKICredentials
 from volttron.server.decorators import service
 from volttron.types.auth import VolttronCredentials
 
+
 @service
 class VolttronCredentialsCreator(CredentialsCreator):
-
     class Meta:
         name = "zmq"
 
@@ -24,10 +24,10 @@ class VolttronCredentialsCreator(CredentialsCreator):
             raise ValueError(f"Unkown kwargs: {kwargs.keys()}")
 
         return VolttronCredentials(identity=identity,
-                                      publickey=public,
-                                      secretkey=secret,
-                                      domain=domain,
-                                      address=address)
+                                   publickey=public,
+                                   secretkey=secret,
+                                   domain=domain,
+                                   address=address)
 
 
 def encode_key(key):

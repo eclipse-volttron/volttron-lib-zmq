@@ -41,7 +41,7 @@ from typing import Literal, Optional
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import zmq.green as zmq
-from volttron.types.bases import Connection, Message
+from volttron.types import Connection, Message
 from zmq.utils.monitor import recv_monitor_message
 
 from .green import Socket as GreenSocket
@@ -100,7 +100,7 @@ class ZmqConnection(Connection):
         _log.debug(f"Waiting for message recv")
         return self.recv_vip_object()
 
-    def open_connection(self, type = None):
+    def open_connection(self, type=None):
         if type == zmq.DEALER:
             self._socket = GreenSocket(self._zmq_context)
             if self._identity:
@@ -116,8 +116,6 @@ class ZmqConnection(Connection):
             self._socket.setsockopt(zmq.RECONNECT_IVL, reconnect_interval)
 
     def connect(self, callback=None):
-
-        from volttron.messagebus.zmq.keystore import encode_key
 
         def _add_keys_to_addr() -> str:
             '''Adds public, secret, and server keys to query in VIP address if
@@ -139,9 +137,15 @@ class ZmqConnection(Connection):
 
             return str(urlunsplit(url))
 
+        from volttron.messagebus.zmq.keystore import decode_key
         addr = _add_keys_to_addr()
         _log.debug(f"connecting to address {addr}")
-
+        # client.curve_secretkey = decode_key(cred_key_store["secretkey"])
+        # client.curve_publickey = decode_key(cred_key_store["publickey"])
+        # client.curve_serverkey = decode_key(server_public_key)
+        # self._socket.curve_secretkey = decode_key(self._conn_context.secretkey)
+        # self._socket.curve_publickey = decode_key(self._conn_context.publickey)
+        # self._socket.curve_serverkey = decode_key(self._conn_context.serverkey)
         self._socket.connect(addr=addr)
         if callback:
             callback(True)
@@ -157,16 +161,16 @@ class ZmqConnection(Connection):
         self._socket.send_vip_object(message, flags, copy, track)
 
     def send_vip(
-        self,
-        peer,
-        subsystem,
-        args=None,
-        msg_id: bytes = b"",
-        user=b"",
-        via=None,
-        flags=0,
-        copy=True,
-        track=False,
+            self,
+            peer,
+            subsystem,
+            args=None,
+            msg_id: bytes = b"",
+            user=b"",
+            via=None,
+            flags=0,
+            copy=True,
+            track=False,
     ):
         self._socket.send_vip(
             peer,
