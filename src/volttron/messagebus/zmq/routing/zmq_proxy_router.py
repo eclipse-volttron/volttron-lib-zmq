@@ -27,10 +27,10 @@ from __future__ import absolute_import, print_function
 import logging
 
 from volttron.client.vip.agent import Agent, Core
-from volttron.types.bases import AbstractAgent
+from volttron.types import AbstractAgent
 from volttron.utils import ClientContext as cc
 from volttron.utils import jsonapi
-from volttron.utils.frame_serialization import (deserialize_frames, serialize_frames)
+from volttron.messagebus.zmq.serialize_frames import (deserialize_frames, serialize_frames)
 from zmq import green as zmq
 from zmq.green import ENOTSOCK, ZMQError
 
@@ -55,8 +55,8 @@ class ZMQProxyRouter(Agent):
     def __init__(self, address, identity, zmq_router, *args, **kwargs):
         super(ZMQProxyRouter, self).__init__(identity, address, **kwargs)
         self.zmq_router = zmq_router
-        self._routing_key = self.core.instance_name + "." + "proxy"
-        rmq_user = self.core.instance_name + "." + identity
+        self._routing_key = self.core._instance_name + "." + "proxy"
+        rmq_user = self.core._instance_name + "." + identity
         self._outbound_response_queue = "{user}.zmq.outbound.response".format(user=rmq_user)
         self._outbound_request_queue = "{user}.zmq.outbound.request".format(user=rmq_user)
         self._rpc_handler_queue = "{user}.zmq.outbound.subsystem".format(user=rmq_user)
@@ -93,7 +93,7 @@ class ZMQProxyRouter(Agent):
         channel.queue_bind(
             exchange=connection.exchange,
             queue=self._rpc_handler_queue,
-            routing_key=self.core.instance_name + ".proxy.router.zmq.outbound.subsystem",
+            routing_key=self.core._instance_name + ".proxy.router.zmq.outbound.subsystem",
             callback=None,
         )
         channel.basic_consume(self.rpc_message_handler, queue=self._rpc_handler_queue, no_ack=True)
@@ -111,7 +111,7 @@ class ZMQProxyRouter(Agent):
         channel.queue_bind(
             exchange=connection.exchange,
             queue=self._outbound_response_queue,
-            routing_key=self.core.instance_name + ".proxy.router.subsystems",
+            routing_key=self.core._instance_name + ".proxy.router.subsystems",
             callback=None,
         )
         channel.basic_consume(
@@ -134,7 +134,7 @@ class ZMQProxyRouter(Agent):
         channel.queue_bind(
             exchange=connection.exchange,
             queue=self._outbound_request_queue,
-            routing_key=self.core.instance_name + ".proxy.router.pubsub",
+            routing_key=self.core._instance_name + ".proxy.router.pubsub",
             callback=None,
         )
 
@@ -142,7 +142,7 @@ class ZMQProxyRouter(Agent):
         channel.queue_bind(
             exchange=connection.exchange,
             queue=self._outbound_request_queue,
-            routing_key=self.core.instance_name + ".proxy.router.external_rpc",
+            routing_key=self.core._instance_name + ".proxy.router.external_rpc",
             callback=None,
         )
         channel.basic_consume(
@@ -323,7 +323,7 @@ class ZMQProxyRouter(Agent):
         #     _log.debug("Frames:; {}".format(f))
         connection = self.core.connection
 
-        app_id = "{instance}.{identity}".format(instance=self.core.instance_name, identity=sender)
+        app_id = "{instance}.{identity}".format(instance=self.core._instance_name, identity=sender)
         # Change queue binding for the Response message
         # After sending the message (request) on behalf of ZMQ client, the response has to
         # routed back to the caller. Queue binding is modified for that purpose.
@@ -337,28 +337,28 @@ class ZMQProxyRouter(Agent):
         )
 
         # Set the destination routing key to destination agent
-        destination_routing_key = "{0}.{1}".format(self.core.instance_name, recipient)
+        destination_routing_key = "{0}.{1}".format(self.core._instance_name, recipient)
 
         # Fit VIP frames into the PIKA properties dictionary
         # VIP format - [SENDER, RECIPIENT, PROTO, USER_ID, MSG_ID, SUBSYS, ARGS...]
         dct = {
             "user_id":
-            self.core.instance_name + "." + self.core.identity,
+                self.core._instance_name + "." + self.core.identity,
             "app_id":
-            app_id,    # Routing key of SOURCE AGENT
+                app_id,  # Routing key of SOURCE AGENT
             "headers":
-            dict(
-                sender=sender,    # SENDER
-                recipient=destination_routing_key,    # RECEIVER
-                proto="VIP",    # PROTO
-                user=auth_token,    # USER_ID
-            ),
+                dict(
+                    sender=sender,  # SENDER
+                    recipient=destination_routing_key,  # RECEIVER
+                    proto="VIP",  # PROTO
+                    user=auth_token,  # USER_ID
+                ),
             "message_id":
-            msg_id,    # MSG_ID
+                msg_id,  # MSG_ID
             "type":
-            subsystem,    # SUBSYS
+                subsystem,  # SUBSYS
             "content_type":
-            "application/json",
+                "application/json",
         }
         properties = pika.BasicProperties(**dct)
         # _log.debug("PROXY PUBLISHING TO CHANNEL {0}, {1}, {2}".format(destination_routing_key, app_id, properties))

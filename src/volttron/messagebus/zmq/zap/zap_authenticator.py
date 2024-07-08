@@ -7,16 +7,14 @@ import zmq.green as zmq
 from volttron.types.auth import PublicCredentials
 from volttron.types.auth.auth_service import Authenticator, CredentialsStore, Credentials
 from volttron.types.auth.authz_types import Identity
-#from volttron.types.auth import Authenticator, CredentialsStore, Credentials
+# from volttron.types.auth import Authenticator, CredentialsStore, Credentials
 from volttron.server.server_options import ServerOptions
 from volttron.decorators import service
-from volttron.types.bases import Service
+from volttron.types import Service
 
 from .credentials_creator import encode_key
 
 _log = logging.getLogger("zap-authenticator")
-
-
 
 _dump_re = re.compile(r"([,\\])")
 _load_re = re.compile(r"\\(.)|,")
@@ -31,7 +29,6 @@ def dump_user(*args) -> str:
 
 
 def load_user(string):
-
     def sub(match):
         return match.group(1) or "\x00"
 
@@ -61,6 +58,7 @@ class ZapAuthenticator(Authenticator):
         #     self._protected_topics_file_path,
         #     self._read_protected_topics_file,
         # )
+
     def is_authenticated(self, *, identity: Identity) -> bool:
         return identity in self._authenticated
 
@@ -69,7 +67,7 @@ class ZapAuthenticator(Authenticator):
             if not self._credentials_store.has_identity(credentials.identity):
                 # Might be other stuff here to work with.
                 return False
-        #creds = self._credentials_store.retrieve_credentials(credentials.identity)
+        # creds = self._credentials_store.retrieve_credentials(credentials.identity)
         return True
 
     def zap_loop(self):
@@ -213,12 +211,11 @@ class ZapAuthenticator(Authenticator):
         _log.debug(f"AUTH: domain={domain}, address={address}, credentials={credentials}")
 
         matched_credential = self._credentials_store.retrieve_credentials(publickey=credentials,
-                                                                           domain=domain,
-                                                                           address=address)
+                                                                          domain=domain,
+                                                                          address=address)
 
         if matched_credential:
             return matched_credential.identity
-
 
         # for entry in self.auth_entries:
         #     if entry.match(domain, address, mechanism, credentials):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Optional
-#from treelib import Node, Tree
+
 from dataclass_wizard import JSONSerializable
 from volttron.server.decorators import service
 from volttron.server.server_options import ServerOptions
@@ -11,6 +11,7 @@ from volttron.types.auth.auth_credentials import (Credentials, CredentialsStore,
                                                   IdentityNotFound, PKICredentials)
 from volttron.types.auth.authz_types import Identity, PubKey
 from volttron.types.auth import VolttronCredentials
+
 
 @service
 class FileBasedCredentialStore(CredentialsStore):
@@ -51,34 +52,33 @@ class FileBasedCredentialStore(CredentialsStore):
 
         :param credential_store_repository: The path to the credential store directory.
         """
+
         import os
         if credentials_store_repository is None:
             opts = ServerOptions()
             if "VOLTTRON_HOME" in os.environ:
-                opts.volttron_home = Path(os.environ['VOLTTRON_HOME'])
+                opts.volttron_home = Path(os.environ['VOLTTRON_HOME']).expanduser()
             credentials_store_repository = opts.volttron_home / "credentials_store"
 
-        self._credentials_repository: Path = credentials_store_repository    # type: ignore
+        self._credentials_repository: Path = credentials_store_repository  # type: ignore
         if isinstance(self._credentials_repository, str):
-            self._credentials_repository = Path(credentials_store_repository)
-
+            self._credentials_repository = Path(credentials_store_repository).expanduser().absolute()
         self._credentials_repository.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._publickey_map: dict[PubKey, Identity] = {}
         for d in self._credentials_repository.glob("*.json"):
             cfg = json.loads(d.read_text())
             self._publickey_map[cfg['publickey']] = cfg
 
-
     @property
     def credentials_type(self) -> type:
-        return PKICredentials
+        return VolttronCredentials
 
     @property
     def credentials_repository(self) -> Path:
         return self._credentials_repository
 
     def get_credentials_type(self) -> type:
-        return PKICredentials
+        return VolttronCredentials
 
     def retrieve_credentials_by_key(self,
                                     *,
@@ -128,7 +128,6 @@ class FileBasedCredentialStore(CredentialsStore):
         cfg = json.loads(json_str)
         path.open("wt").write(json_str)
         self._publickey_map[cfg['publickey']] = cfg
-
 
     def retrieve_credentials(self, **kwargs) -> Credentials:
         """

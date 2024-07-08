@@ -27,10 +27,10 @@ import zmq
 import logging
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
 
-from volttron.utils.frame_serialization import serialize_frames
-from volttron.utils.keystore import KeyStore
+from volttron.messagebus.zmq.serialize_frames import serialize_frames
+from volttron.messagebus.zmq.keystore import KeyStore
 from zmq.utils import jsonapi
-from volttron.utils.socket import Address
+from volttron.messagebus.zmq.socket import Address
 from zmq.utils.monitor import recv_monitor_message
 import random
 from zmq.green import ENOTSOCK
@@ -58,15 +58,15 @@ class RoutingService(object):
     """
 
     def __init__(
-        self,
-        socket,
-        context,
-        socket_class,
-        poller,
-        my_addr,
-        instance_name,
-        *args,
-        **kwargs,
+            self,
+            socket,
+            context,
+            socket_class,
+            poller,
+            my_addr,
+            instance_name,
+            *args,
+            **kwargs,
     ):
         self._routing_table = dict()
         self._poller = poller
@@ -102,18 +102,18 @@ class RoutingService(object):
         except (
                 ValueError,
                 TypeError,
-        ):    # TypeError will happen if frames is not subscriptable.
+        ):  # TypeError will happen if frames is not subscriptable.
             _log.error(f"Invalid number of frames handle_subsystem {frames}")
             return False
 
         if subsystem == "routing_table":
             # If Setup mode of operation, setup authorization
             if op == "setupmode_platform_connection":
-                instance_config = frames[7]    # sonapi.loads(instance_config)
+                instance_config = frames[7]  # sonapi.loads(instance_config)
                 self._setup_authorization(instance_config)
             # If Normal mode of operation, build authorized connection
             elif op == "normalmode_platform_connection":
-                instance_config = frames[7]    # jsonapi.loads(instance_config)
+                instance_config = frames[7]  # jsonapi.loads(instance_config)
                 self._build_connection(instance_config)
                 return False
             # Respond to Hello/Welcome messages from other instances
@@ -168,7 +168,7 @@ class RoutingService(object):
     def _setup_authorization(self, instance_info):
         """
         Setup authorized connection with remote instance
-        :param instance_name: dicovery information(server key, name, vip-address) of remote instance
+        :param _instance_name: dicovery information(server key, name, vip-address) of remote instance
         :return:
         """
         try:
@@ -202,7 +202,7 @@ class RoutingService(object):
     def _build_connection(self, instance_info):
         """
         Build connection with remote instance and send initial "hello" message.
-        :param instance_name: name of remote instance
+        :param _instance_name: name of remote instance
         :param serverkey: serverkey for establishing connection with remote instance
         :return:
         """
@@ -393,9 +393,9 @@ class RoutingService(object):
             #             _log.debug("Trying to send with router socket")
             #             #success = self._send(self._socket, frames)
             #         except ZMQError as exc:
-            #             _log.debug("Dropping or setting to disconnected {}".format(instance_name))
+            #             _log.debug("Dropping or setting to disconnected {}".format(_instance_name))
             #             # Let's just update status as 'DISCONNECTED' for now
-            #             self._instances[instance_name]['status'] = STATUS_DISCONNECTED
+            #             self._instances[_instance_name]['status'] = STATUS_DISCONNECTED
             #             raise
         except KeyError:
             _log.debug(f"******************My instance name is: {self._my_instance_name}")

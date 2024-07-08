@@ -36,7 +36,7 @@ from collections import defaultdict
 from volttron.utils import ClientContext as cc
 from volttron.utils import jsonapi
 from volttron.utils.jsonrpc import INVALID_REQUEST, UNAUTHORIZED
-from volttron.utils.frame_serialization import serialize_frames
+from volttron.messagebus.zmq.serialize_frames import serialize_frames
 
 green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
 from volttron.client.vip.agent.subsystems.pubsub import ProtectedPubSubTopics
@@ -657,7 +657,7 @@ class PubSubService:
         except (
                 ValueError,
                 TypeError,
-        ):    # TypeError will happen if frames is not subscriptable.
+        ):  # TypeError will happen if frames is not subscriptable.
             _log.error(f"Invalid number of frames handle_subsystem {frames}")
             return False
 
