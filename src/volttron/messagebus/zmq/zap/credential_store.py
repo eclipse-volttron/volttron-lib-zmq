@@ -159,3 +159,6 @@ class FileBasedCredentialStore(CredentialsStore):
             raise IdentityNotFound(identity)
         path.unlink()
         assert path.exists() is False
+
+        k, v = next(filter(lambda x: x[1]["identity"] == identity, self._publickey_map.items()))
+        self._publickey_map.pop(k)
