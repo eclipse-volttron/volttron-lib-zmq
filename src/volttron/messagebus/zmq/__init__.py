@@ -146,7 +146,7 @@ class ZmqMessageBus(MessageBus):
         import os
         env = os.environ.copy()
 
-        if env.get("GEVENT_SUPPORT") == "True":
+        if gevent_support := env.get("GEVENT_SUPPORT") == "True":
             del os.environ["GEVENT_SUPPORT"]
         self._thread = threading.Thread(target=zmq_router,
                                         daemon=True,
@@ -155,7 +155,7 @@ class ZmqMessageBus(MessageBus):
                                             self._protected_topics, self._external_address_file, self._stop
                                         ])
         self._thread.start()
-        if env.get("GEVENT_SUPPORT") == "True":
+        if gevent_support:
             os.environ["GEVENT_SUPPORT"] = "True"
 
     def is_running(self):
@@ -167,7 +167,7 @@ class ZmqMessageBus(MessageBus):
     def send_vip_message(self, message: Message):
         ...
 
-    def receive_vip_message() -> Message:
+    def receive_vip_message(self) -> Message:
         ...
 
 
