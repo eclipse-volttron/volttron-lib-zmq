@@ -20,6 +20,7 @@ classifiers = [
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 pyzmq = "^25.1.2"
+msgpack-python = "^0.5.6"
 volttron-core = { path="../volttron-core", develop = true}
 
 [tool.poetry.group.dev.dependencies]

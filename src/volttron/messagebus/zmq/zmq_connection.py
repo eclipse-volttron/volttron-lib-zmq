@@ -41,13 +41,11 @@ from typing import Literal, Optional
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import zmq.green as zmq
-from volttron.types import Connection, Message
+from volttron.types import Connection, Message, Identity
 from zmq.utils.monitor import recv_monitor_message
 
 from .green import Socket as GreenSocket
 
-# TODO ADD BACK rmq
-# from volttron.client.vip.rmq_connection import BaseConnection
 _log = logging.getLogger(__name__)
 
 
@@ -71,9 +69,9 @@ class ZmqConnection(Connection):
         super().__init__()
         self._conn_context = conn_context
 
-        self._socket = None
-        self._zmq_context = zmq_context
-        self._identity = self._conn_context.identity
+        self._socket: zmq.Socket | GreenSocket | None = None
+        self._zmq_context: zmq.Context = zmq_context
+        self._identity: Identity = self._conn_context.identity
         self._logger = logging.getLogger(__name__)
         self._logger.debug(f"ZMQ connection {self._identity}")
 
@@ -93,10 +91,9 @@ class ZmqConnection(Connection):
 
     def send_vip_message(self, message: Message):
         assert isinstance(message, Message)
-        _log.debug(f"Send vip message: {message}")
         self.send_vip_object(message=message)
 
-    def recieve_vip_message(self) -> Message:
+    def receive_vip_message(self) -> Message:
         _log.debug(f"Waiting for message recv")
         return self.recv_vip_object()
 
@@ -172,6 +169,7 @@ class ZmqConnection(Connection):
             copy=True,
             track=False,
     ):
+        _log.debug(f"ZmqConnection.send_vip: {peer}, {subsystem}, {args}, {msg_id}, {user}, {via}, {flags}, {copy}, {track}")
         self._socket.send_vip(
             peer,
             subsystem,

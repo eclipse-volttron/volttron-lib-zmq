@@ -283,6 +283,7 @@ class PubSubService:
         :Return Values:
         Number of subscribers to whom the message was sent
         """
+        self._logger.debug(f"Peer Publish: {frames}, user: {user_id}")
         if len(frames) > 8:
             try:
                 msg = frames[8]
@@ -437,6 +438,8 @@ class PubSubService:
         subs.update(all_subscriptions)
         subs.update(subscriptions)
         subscribers = set()
+
+        _log.debug(f"Subs are: {subs}")
         # Check for local subscribers
         for prefix, subscription in subs.items():
             if subscription and topic.startswith(prefix):
@@ -663,7 +666,7 @@ class PubSubService:
 
         # subsystem = bytes(subsystem)
         # op = bytes(op)
-
+        self._logger.debug(f"PubSubService subsystem: {subsystem} operation: {op}")
         if subsystem == "pubsub":
             if op == "subscribe":
                 result = self._peer_subscribe(frames)
@@ -709,6 +712,7 @@ class PubSubService:
             response.append("request_response")
             response.append(result)
 
+        self._logger.debug(f"Response from op: {op} is {response}")
         return response
 
     def _check_if_protected_topic(self, peer, topic):

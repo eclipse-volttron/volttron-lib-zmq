@@ -263,6 +263,7 @@ class Router(BaseRouter):
 
             return frames
         elif subsystem == "pubsub":
+            _log.debug(f"Handling pubsub frames {frames} user_id: {user_id}")
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         elif subsystem == "routing_table":
@@ -291,6 +292,7 @@ class Router(BaseRouter):
             if sock == self.socket:
                 if sockets[sock] == zmq.POLLIN:
                     frames = sock.recv_multipart(copy=False)
+                    _log.debug(f"Frames: {frames}")
                     self.route(deserialize_frames(frames))
             elif sock in self._ext_routing._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:

@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import urllib
 import uuid
-from dataclasses import dataclass
 from errno import EAGAIN, ENOENT, ENOTSOCK
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
@@ -156,7 +154,9 @@ class ZmqCore(Core):
         return super(ZmqCore, self).get_connected()
 
     def set_connected(self, value):
-        super(ZmqCore, self).set_connected(value)
+        # TODO pass through?  Do we need this here?
+        #super(ZmqCore, self).set_connected(value)
+        pass
 
     connected = property(get_connected, set_connected)
 
@@ -334,6 +334,7 @@ class ZmqCore(Core):
         hello()
 
         def vip_loop():
+            _log.debug("VIP LOOP STARTED!")
             sock = self._socket
             while True:
                 try:
@@ -352,9 +353,12 @@ class ZmqCore(Core):
                     else:
                         raise
                 subsystem = message.subsystem
-                _log.debug("Received new message {0}, {1}, {2}, {3}".format(subsystem, message.id, len(message.args),
-                                                                            message.args[0]))
-                _log.debug(f"Message is: {message}")
+                _log.debug(f"New Message: {message}")
+                #_log.debug(f"New message:\n\t{pformat(message.__dict__, 2)}")
+                #_log.debug(f"New Message Received:\n\tsubsystem: {subsystem}\n\tid: {message.id}\n\targs length: {len(message.args)}\n\targ[0]: {message.args[0]}")
+                # _log.debug("Received new message {0}, {1}, {2}, {3}".format(subsystem, message.id, len(message.args),
+                #                                                             message.args[0]))
+                #_log.debug(f"Message is: {message}")
 
                 # Handle hellos sent by CONNECTED event
                 if (str(subsystem) == "hello" and message.id == state.ident and len(message.args) > 3

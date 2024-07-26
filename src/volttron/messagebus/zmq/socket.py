@@ -63,7 +63,6 @@ from zmq import (DEALER, NOBLOCK, RCVMORE, ROUTER, SNDMORE, ZMQError, curve_keyp
 __all__ = ["Address", "ProtocolError", "Message", "nonblocking"]
 
 _log = logging.getLogger(__name__)
-_log.setLevel(logging.DEBUG)
 
 
 @contextmanager
@@ -380,7 +379,6 @@ class _Socket(object):
 
     def send_multipart(self, msg_parts, flags=0, copy=True, track=False):
         parts = serialize_frames(msg_parts)
-        _log.debug("Sending parts on multiparts: {}".format(parts))
         with self._sending(flags) as flags:
             super(_Socket, self).send_multipart(parts, flags=flags, copy=copy, track=track)
 
@@ -460,9 +458,10 @@ class _Socket(object):
             "peer": msg.peer,
             "subsystem": msg.subsystem,
             "user": getattr(msg, "user", ""),
-            "msg_id": getattr(msg, "id", ""),
+            "msg_id": getattr(msg, "id", getattr(msg, "msg_id", "")),
             "args": getattr(msg, "args", None),
         }
+        _log.debug(f"Sending vip_object: {dict}")
         self.send_vip(flags=flags, copy=copy, track=track, **dct)
 
     def recv(self, flags=0, copy=True, track=False):
@@ -562,6 +561,7 @@ class _Socket(object):
         msg = Message()
         # data = self.recv_vip_dict(flags=flags, copy=copy, track=track)
         msg.__dict__ = self.recv_vip_dict(flags=flags, copy=copy, track=track)
+        _log.debug(f"{msg.__dict__}")
         return msg
 
     def bind(self, addr):
