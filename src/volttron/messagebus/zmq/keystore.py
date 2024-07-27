@@ -32,10 +32,11 @@ import urllib
 from zmq.utils import z85
 from zmq import curve_keypair
 
+from volttron.messagebus.zmq import get_logger
 from volttron.utils import jsonapi, ClientContext as cc
 from volttron.utils import create_file_if_missing
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 BASE64_ENCODED_CURVE_KEY_LEN = 43
 

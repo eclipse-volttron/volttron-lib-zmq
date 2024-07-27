@@ -39,7 +39,9 @@ INCOMING = 1
 UNROUTABLE = 2
 ERROR = 3
 
-_log = logging.getLogger(__name__)
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
 
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {

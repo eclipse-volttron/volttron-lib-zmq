@@ -29,7 +29,9 @@ from volttron.utils import jsonapi
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
 from volttron.messagebus.zmq.serialize_frames import serialize_frames
 
-_log = logging.getLogger(__name__)
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {
     errnum: (
