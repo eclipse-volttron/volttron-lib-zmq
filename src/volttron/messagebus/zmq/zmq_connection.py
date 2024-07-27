@@ -46,8 +46,9 @@ from zmq.utils.monitor import recv_monitor_message
 
 from .green import Socket as GreenSocket
 
-_log = logging.getLogger(__name__)
+from volttron.messagebus.zmq import get_logger
 
+_log = get_logger()
 
 @dataclass
 class ZmqConnectionContext:

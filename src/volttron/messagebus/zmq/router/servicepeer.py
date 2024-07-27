@@ -22,9 +22,9 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
-import logging
+from volttron.messagebus.zmq import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 
 class ServicePeerNotifier(object):

@@ -46,6 +46,8 @@ from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
 from zmq import green
 from collections import defaultdict
 
+from volttron.messagebus.zmq import get_logger
+
 # Create a context common to the green and non-green zmq modules.
 from volttron.utils import ClientContext as cc
 from volttron.utils import jsonapi
@@ -64,7 +66,7 @@ _ROUTE_ERRORS = {
     for errnum in [zmq.EHOSTUNREACH, zmq.EAGAIN]
 }
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 
 class PubSubService:

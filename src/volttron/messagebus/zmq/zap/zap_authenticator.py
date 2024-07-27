@@ -14,7 +14,9 @@ from volttron.types import Service
 
 from .credentials_creator import encode_key
 
-_log = logging.getLogger("zap-authenticator")
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
 
 _dump_re = re.compile(r"([,\\])")
 _load_re = re.compile(r"\\(.)|,")

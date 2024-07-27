@@ -49,7 +49,9 @@ _ROUTE_ERRORS = {
     for errnum in [zmq.EHOSTUNREACH, zmq.EAGAIN]
 }
 
-_log = logging.getLogger(__name__)
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
 
 
 class RoutingService(object):

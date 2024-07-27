@@ -29,8 +29,9 @@ from zmq.sugar.frame import Frame
 import struct
 
 from volttron.utils import jsonapi
+from volttron.messagebus.zmq import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 # python 3.8 formatting errors with utf-8 encoding.  The ISO-8859-1 is equivilent to latin-1
 ENCODE_FORMAT = "ISO-8859-1"

@@ -36,7 +36,7 @@ from volttron.types.peer import ServicePeerNotifier
 from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
 from volttron.messagebus.zmq.keystore import encode_key, decode_key
 from volttron.utils import jsonapi
-from volttron.utils.logs import FramesFormatter
+from volttron.server.logs import FramesFormatter
 from volttron.messagebus.zmq.socket import Address
 from zmq import NOBLOCK, ZMQError
 
@@ -44,8 +44,9 @@ from volttron.server.containers import service_repo
 from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
 from volttron.client.known_identities import PLATFORM
 from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
+from volttron.messagebus.zmq import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 
 class Router(BaseRouter):
@@ -80,7 +81,7 @@ class Router(BaseRouter):
 
         # self._secretkey = decode_key(secretkey)
         # self._publickey = decode_key(publickey)
-        self.logger = logging.getLogger("vip.router")
+        self.logger = logging.getLogger("volttron-lib-zmq")
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.DEBUG)  # .WARNING)
         self._monitor = monitor

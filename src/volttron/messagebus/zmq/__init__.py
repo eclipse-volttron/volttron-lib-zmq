@@ -62,6 +62,8 @@ import gevent
 import zmq as _zmq
 import zmq.green as zmq
 
+from volttron.messagebus.logger import get_logger
+
 from volttron.client.known_identities import PLATFORM
 # from volttron.client.vip.agent.core import Core
 from volttron.server.containers import service_repo
@@ -70,7 +72,6 @@ from volttron.server.server_options import ServerOptions
 from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
 from volttron.types import Message, MessageBus
 from volttron.types.peer import ServicePeerNotifier
-from volttron.utils.logs import logtrace
 
 import volttron.messagebus.zmq.zap
 from volttron.messagebus.zmq.router import Router
@@ -78,8 +79,7 @@ from volttron.messagebus.zmq.zmq_connection import ZmqConnection
 from volttron.messagebus.zmq.zmq_core import ZmqCore
 from volttron.client.known_identities import PLATFORM
 
-_log = logging.getLogger(__name__)
-
+_log = get_logger()
 
 # Main loops
 def zmq_router(opts: argparse.Namespace, notifier, tracker, protected_topics,
@@ -263,7 +263,7 @@ __all__: list[str] = ['ZmqConnection', 'ZmqCore']
 #         self._authenticator: Authenticator = None
 #         self._server_credentials: PKICredentials = None
 
-#     @logtrace
+#
 #     def start(self, options: ServerOptions):
 #         self._options = options
 #         self._start()
@@ -449,7 +449,7 @@ __all__: list[str] = ['ZmqConnection', 'ZmqCore']
 #                     pass
 #             timeout = (wait_list[0][0] - now) if wait_list else None
 
-#     @logtrace
+#
 #     def _start(self):
 #         _log.debug(f"Starting {self.__class__.__name__}")
 
