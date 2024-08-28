@@ -1,51 +1,36 @@
 # -*- coding: utf-8 -*- {{{
-# vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
+# ===----------------------------------------------------------------------===
 #
-# Copyright 2020, Battelle Memorial Institute.
+#                 Installable Component of Eclipse VOLTTRON
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# ===----------------------------------------------------------------------===
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+# Copyright 2022 Battelle Memorial Institute
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 #
-# This material was prepared as an account of work sponsored by an agency of
-# the United States Government. Neither the United States Government nor the
-# United States Department of Energy, nor Battelle, nor any of their
-# employees, nor any jurisdiction or organization that has cooperated in the
-# development of these materials, makes any warranty, express or
-# implied, or assumes any legal liability or responsibility for the accuracy,
-# completeness, or usefulness or any information, apparatus, product,
-# software, or process disclosed, or represents that its use would not infringe
-# privately owned rights. Reference herein to any specific commercial product,
-# process, or services by trade name, trademark, manufacturer, or otherwise
-# does not necessarily constitute or imply its endorsement, recommendation, or
-# favoring by the United States Government or any agency thereof, or
-# Battelle Memorial Institute. The views and opinions of authors expressed
-# herein do not necessarily state or reflect those of the
-# United States Government or any agency thereof.
-#
-# PACIFIC NORTHWEST NATIONAL LABORATORY operated by
-# BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
-# under Contract DE-AC05-76RL01830
+# ===----------------------------------------------------------------------===
 # }}}
 
-import os
 import logging
+import os
 from typing import Optional
 
-import zmq.green as zmq
-# import zmq
-from zmq import NOBLOCK, ZMQError, EINVAL, EHOSTUNREACH
+import zmq
+from volttron.messagebus.zmq.serialize_frames import serialize_frames
+from zmq import EHOSTUNREACH, EINVAL, NOBLOCK, ZMQError
 
-from volttron.server.servicepeer import ServicePeerNotifier
-from volttron.utils.frame_serialization import serialize_frames
+from volttron.messagebus.zmq.router.servicepeer import ServicePeerNotifier
 
 __all__ = ["BaseRouter", "OUTGOING", "INCOMING", "UNROUTABLE", "ERROR"]
 
@@ -54,7 +39,9 @@ INCOMING = 1
 UNROUTABLE = 2
 ERROR = 3
 
-_log = logging.getLogger(__name__)
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
 
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {
@@ -90,10 +77,10 @@ class BaseRouter(object):
     _poller_class = zmq.Poller
 
     def __init__(
-        self,
-        context=None,
-        default_user_id=None,
-        service_notifier: Optional[ServicePeerNotifier] = None,
+            self,
+            context=None,
+            default_user_id=None,
+            service_notifier=Optional[ServicePeerNotifier],
     ):
         """Initialize the object instance.
 
@@ -126,15 +113,14 @@ class BaseRouter(object):
         """
         self.socket = sock = self._socket_class(self.context, zmq.ROUTER)
         sock.router_mandatory = True
-        # sock.sndtimeo = 0
+        sock.sndtimeo = 0
         sock.tcp_keepalive = True
         sock.tcp_keepalive_idle = 180
         sock.tcp_keepalive_intvl = 20
         sock.tcp_keepalive_cnt = 6
         self.context.set(zmq.MAX_SOCKETS, 30690)
         sock.set_hwm(6000)
-        _log.debug("ROUTER SENDBUF: {0}, {1}".format(sock.getsockopt(zmq.SNDBUF),
-                                                     sock.getsockopt(zmq.RCVBUF)))
+        _log.debug("ROUTER SENDBUF: {0}, {1}".format(sock.getsockopt(zmq.SNDBUF), sock.getsockopt(zmq.RCVBUF)))
         self.setup()
 
     def stop(self, linger=1):
@@ -188,7 +174,7 @@ class BaseRouter(object):
     if zmq.zmq_version_info() >= (4, 1, 0):
 
         def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identity.
+            """Find and return a user identifier.
 
             Returns the UTF-8 encoded User-Id property from the sender
             frame or None if the authenticator did not set the User-Id
@@ -208,7 +194,7 @@ class BaseRouter(object):
     else:
 
         def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identity.
+            """Find and return a user identifier.
 
             A no-op by default, this method must be overridden to map
             the sender and auth_token to a user ID. The returned value
@@ -245,7 +231,6 @@ class BaseRouter(object):
         self._peers.add(peer)
         self._add_pubsub_peers(peer)
         if self._service_notifier:
-            _log.debug(f"Service notifier: {self._service_notifier}")
             self._service_notifier.peer_added(peer)
 
     def _drop_peer(self, peer):
@@ -269,7 +254,7 @@ class BaseRouter(object):
         issue = self.issue
 
         issue(INCOMING, frames)
-        _log.debug(f"ROUTER Receiving frames: {frames}")
+        # _log.debug(f"ROUTER Receiving frames: {frames}")
         if len(frames) < 6:
             # Cannot route if there are insufficient frames, such as
             # might happen with a router probe.
@@ -295,6 +280,7 @@ class BaseRouter(object):
             # Handle requests directed at the router
             name = subsystem
             if name == "hello":
+                # frames = [sender, recipient, proto, '', '', '', '', '', '', '']
                 frames = [
                     sender,
                     recipient,

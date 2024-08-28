@@ -35,23 +35,33 @@
 # BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
 # under Contract DE-AC05-76RL01830
 # }}}
+import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import zmq.green as zmq
-import logging
+from volttron.types import Connection, Message, Identity
+from zmq.utils.monitor import recv_monitor_message
 
-from volttron.types import BaseConnection, ConnectionContext
-from .connection import ZmqConnectionContext
+from .green import Socket as GreenSocket
 
-from . green import Socket as GreenSocket
+from volttron.messagebus.zmq import get_logger
 
-# TODO ADD BACK rmq
-# from volttron.client.vip.rmq_connection import BaseConnection
-_log = logging.getLogger(__name__)
+_log = get_logger()
+
+@dataclass
+class ZmqConnectionContext:
+    address: Optional[str] = None
+    identity: Optional[str] = None
+    publickey: Optional[str] = None
+    secretkey: Optional[str] = None
+    serverkey: Optional[str] = None
+    agent_uuid: Optional[str] = None
+    reconnect_interval: Optional[int] = None
 
 
-class ZMQConnection(BaseConnection):
+class ZmqConnection(Connection):
     """
     Maintains ZMQ socket connection
     """
@@ -60,31 +70,81 @@ class ZMQConnection(BaseConnection):
         super().__init__()
         self._conn_context = conn_context
 
-        self.socket = None
-        self.context = zmq_context
-        self._identity = self._conn_context.identity
+        self._socket: zmq.Socket | GreenSocket | None = None
+        self._zmq_context: zmq.Context = zmq_context
+        self._identity: Identity = self._conn_context.identity
         self._logger = logging.getLogger(__name__)
         self._logger.debug(f"ZMQ connection {self._identity}")
 
-    def open_connection(self, type):
+    @property
+    def connected(self) -> bool:
+        return self._socket is not None
+
+    # def connect(self):
+    #     self.open_connection(type=zmq.DEALER)
+
+    def disconnect(self):
+        self.close_connection()
+        self._socket = None
+
+    def is_connected(self) -> bool:
+        return self.connected
+
+    def send_vip_message(self, message: Message):
+        assert isinstance(message, Message)
+        self.send_vip_object(message=message)
+
+    def receive_vip_message(self) -> Message:
+        _log.debug(f"Waiting for message recv")
+        return self.recv_vip_object()
+
+    def open_connection(self, type=None):
         if type == zmq.DEALER:
-            self.socket = GreenSocket(self.context)
+            self._socket = GreenSocket(self._zmq_context)
             if self._identity:
-                self.socket.identity = self._identity.encode("utf-8")
+                self._socket.identity = self._identity.encode("utf-8")
         else:
-            self.socket = zmq.Socket()
+            self._socket = zmq.Socket()
 
     def set_properties(self, flags):
         hwm = flags.get("hwm", 6000)
-        self.socket.set_hwm(hwm)
+        self._socket.set_hwm(hwm)
         reconnect_interval = flags.get("reconnect_interval", None)
         if reconnect_interval:
-            self.socket.setsockopt(zmq.RECONNECT_IVL, reconnect_interval)
+            self._socket.setsockopt(zmq.RECONNECT_IVL, reconnect_interval)
 
     def connect(self, callback=None):
-        _log.debug(f"connecting to address {self._conn_context.address}")
 
-        self.socket.connect(self._conn_context.address)
+        def _add_keys_to_addr() -> str:
+            '''Adds public, secret, and server keys to query in VIP address if
+            they are not already present'''
+
+            def add_param(query_str, key, value):
+                query_dict = parse_qs(query_str)
+                if not value or key in query_dict:
+                    return ''
+                # urlparse automatically adds '?', but we need to add the '&'s
+                return '{}{}={}'.format('&' if query_str else '', key, value)
+
+            url = list(urlsplit(self._conn_context.address))
+
+            if url[0] in ['tcp', 'ipc']:
+                url[3] += add_param(url[3], 'publickey', self._conn_context.publickey)
+                url[3] += add_param(url[3], 'secretkey', self._conn_context.secretkey)
+                url[3] += add_param(url[3], 'serverkey', self._conn_context.serverkey)
+
+            return str(urlunsplit(url))
+
+        from volttron.messagebus.zmq.keystore import decode_key
+        addr = _add_keys_to_addr()
+        _log.debug(f"connecting to address {addr}")
+        # client.curve_secretkey = decode_key(cred_key_store["secretkey"])
+        # client.curve_publickey = decode_key(cred_key_store["publickey"])
+        # client.curve_serverkey = decode_key(server_public_key)
+        # self._socket.curve_secretkey = decode_key(self._conn_context.secretkey)
+        # self._socket.curve_publickey = decode_key(self._conn_context.publickey)
+        # self._socket.curve_serverkey = decode_key(self._conn_context.serverkey)
+        self._socket.connect(addr=addr)
         if callback:
             callback(True)
 
@@ -94,22 +154,24 @@ class ZMQConnection(BaseConnection):
     def register(self, handler):
         self._vip_handler = handler
 
-    def send_vip_object(self, message, flags=0, copy=True, track=False):
-        self.socket.send_vip_object(message, flags, copy, track)
+    def send_vip_object(self, message: Message, flags: int = 0, copy: bool = True, track: bool = False):
+        assert self._socket
+        self._socket.send_vip_object(message, flags, copy, track)
 
     def send_vip(
-        self,
-        peer,
-        subsystem,
-        args=None,
-        msg_id: bytes = b"",
-        user=b"",
-        via=None,
-        flags=0,
-        copy=True,
-        track=False,
+            self,
+            peer,
+            subsystem,
+            args=None,
+            msg_id: bytes = b"",
+            user=b"",
+            via=None,
+            flags=0,
+            copy=True,
+            track=False,
     ):
-        self.socket.send_vip(
+        _log.debug(f"ZmqConnection.send_vip: {peer}, {subsystem}, {args}, {msg_id}, {user}, {via}, {flags}, {copy}, {track}")
+        self._socket.send_vip(
             peer,
             subsystem,
             args=args,
@@ -122,14 +184,14 @@ class ZMQConnection(BaseConnection):
         )
 
     def recv_vip_object(self, flags=0, copy=True, track=False):
-        return self.socket.recv_vip_object(flags, copy, track)
+        return self._socket.recv_vip_object(flags, copy, track)
 
     def disconnect(self):
-        self.socket.disconnect(self._url)
+        self._socket.disconnect(self._url)
 
     def close_connection(self, linger=5):
         """This method closes ZeroMQ socket"""
-        self.socket.close(linger)
+        self._socket.close(linger)
         _log.debug("********************************************************************")
         _log.debug("Closing connection to ZMQ: {}".format(self._identity))
         _log.debug("********************************************************************")

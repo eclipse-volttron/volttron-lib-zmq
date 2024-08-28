@@ -1,52 +1,73 @@
+# -*- coding: utf-8 -*- {{{
+# ===----------------------------------------------------------------------===
+#
+#                 Installable Component of Eclipse VOLTTRON
+#
+# ===----------------------------------------------------------------------===
+#
+# Copyright 2022 Battelle Memorial Institute
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# ===----------------------------------------------------------------------===
+# }}}
+
 import logging
 import os
 import sys
+import uuid
 from typing import Optional
 from urllib.parse import urlparse
-import uuid
 
 import zmq
-from zmq import ZMQError, NOBLOCK
-
-from volttron.utils import serialize_frames, deserialize_frames, jsonapi
-from volttron.utils.logs import FramesFormatter
-
-
-from .base_router import BaseRouter, UNROUTABLE, ERROR, INCOMING
-
-#from volttron.services.routing import ExternalRPCService, PubSubService
-
-from volttron.types import PeerNotifier
-#from volttron.services.routing import RoutingService
+from volttron.client.known_identities import CONTROL
 from volttron.server.monitor import Monitor
-from .pubsub import PubSubService
-from .socket import Address
-from volttron.platform.curve.keystore import KeyStore
+from volttron.types.peer import ServicePeerNotifier
+from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
+from volttron.messagebus.zmq.keystore import encode_key, decode_key
+from volttron.utils import jsonapi
+from volttron.server.logs import FramesFormatter
+from volttron.messagebus.zmq.socket import Address
+from zmq import NOBLOCK, ZMQError
 
-# from ..server import __version__
+from volttron.server.containers import service_repo
+from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
+from volttron.client.known_identities import PLATFORM
+from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
+from volttron.messagebus.zmq import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger()
 
 
 class Router(BaseRouter):
     """Concrete VIP router."""
 
     def __init__(
-        self,
-        local_address,
-        addresses=(),
-        context=None,
-        secretkey=None,
-        publickey=None,
-        default_user_id=None,
-        monitor=False,
-        tracker=None,
-        instance_name=None,
-        protected_topics={},
-        external_address_file="",
-        msgdebug=None,
-        agent_monitor_frequency=600,
-        service_notifier: Optional[PeerNotifier] = None,
+            self,
+            *,
+            local_address,
+            addresses=(),
+            context=None,
+            default_user_id=None,
+            monitor=False,
+            tracker=None,
+            instance_name=None,
+            protected_topics={},
+            external_address_file="",
+            msgdebug=None,
+            agent_monitor_frequency=600,
+            service_notifier: ServicePeerNotifier | None = None,
+            auth_enabled: bool = False
     ):
 
         super(Router, self).__init__(
@@ -57,15 +78,18 @@ class Router(BaseRouter):
         self.local_address = Address(local_address)
         self._addr = addresses
         self.addresses = addresses = [Address(addr) for addr in set(addresses)]
-        self._secretkey = secretkey
-        self._publickey = publickey
-        self.logger = logging.getLogger("vip.router")
+
+        # self._secretkey = decode_key(secretkey)
+        # self._publickey = decode_key(publickey)
+        self.logger = logging.getLogger("volttron-lib-zmq")
         if self.logger.level == logging.NOTSET:
-            self.logger.setLevel(logging.DEBUG)
-            #self.logger.setLevel(logging.WARNING)
+            self.logger.setLevel(logging.DEBUG)  # .WARNING)
         self._monitor = monitor
         self._tracker = tracker
+        self._volttron_central_address = None
+        self._volttron_central_serverkey = None
         self._instance_name = instance_name
+        self._bind_web_address = None
         self._protected_topics = protected_topics
         self._external_address_file = external_address_file
         self._pubsub = None
@@ -74,8 +98,10 @@ class Router(BaseRouter):
         self._message_debugger_socket = None
         self._instance_name = instance_name
         self._agent_monitor_frequency = agent_monitor_frequency
+        self._auth_enabled = auth_enabled
 
     def setup(self):
+
         sock = self.socket
         identity = str(uuid.uuid4())
         sock.identity = identity.encode("utf-8")
@@ -84,45 +110,48 @@ class Router(BaseRouter):
             Monitor(sock.get_monitor_socket()).start()
         sock.bind("inproc://vip")
         _log.debug("In-process VIP router bound to inproc://vip")
-        # sock.zap_domain = b"vip"
+        sock.zap_domain = b"vip"
         addr = self.local_address
         if not addr.identity:
             addr.identity = identity
         if not addr.domain:
             addr.domain = "vip"
 
-        if self._secretkey is None:
-            addr.server = "NULL"
-        else:
-            addr.server = "CURVE"
-            addr.secretkey = self._secretkey
+        from volttron.types.auth import CredentialsStore
+        credential_store: CredentialsStore | None = None
 
-        addr.bind(sock)
+        if self._auth_enabled:
+            credential_store = service_repo.resolve(CredentialsStore)
+            secretkey = decode_key(credential_store.retrieve_credentials(identity=PLATFORM).secretkey)
+            addr.server = "CURVE"
+            addr.secretkey = secretkey
+            addr.bind(sock)
+
         _log.debug("Local VIP router bound to %s" % addr)
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
-            if (address.secretkey is None and address.server not in ["NULL", "PLAIN"]
-                    and self._secretkey):
+            if self._auth_enabled:
+                secretkey = decode_key(credential_store.retrieve_credentials(identity=PLATFORM).secretkey)
                 address.server = "CURVE"
-                address.secretkey = self._secretkey
+                address.secretkey = secretkey
             if not address.domain:
                 address.domain = "vip"
             address.bind(sock)
             _log.debug("Additional VIP router bound to %s" % address)
         self._ext_routing = None
 
-        # self._ext_routing = RoutingService(
-        #     self.socket,
-        #     self.context,
-        #     self._socket_class,
-        #     self._poller,
-        #     self._addr,
-        #     self._instance_name,
-        # )
-        #
+        self._ext_routing = RoutingService(
+            self.socket,
+            self.context,
+            self._socket_class,
+            self._poller,
+            self._addr,
+            self._instance_name,
+        )
+
         self.pubsub = PubSubService(self.socket, self._protected_topics, self._ext_routing)
-        # self.ext_rpc = ExternalRPCService(self.socket, self._ext_routing)
+        self.ext_rpc = ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
         _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
 
@@ -135,11 +164,11 @@ class Router(BaseRouter):
         elif topic == UNROUTABLE:
             log("unroutable: %s: %s", extra, formatter)
         else:
-            log(
-                "%s: %s",
-                ("incoming" if topic == INCOMING else "outgoing"),
-                formatter,
-            )
+            direction = "incoming" if topic == INCOMING else "outgoing"
+            if direction == "outgoing":
+                log(f"{direction}: {deserialize_frames(frames)}")
+            else:
+                log(f"{direction}: {frames}")
         if self._tracker:
             self._tracker.hit(topic, frames, extra)
         if self._msgdebug:
@@ -147,14 +176,12 @@ class Router(BaseRouter):
                 # Initialize a ZMQ IPC socket on which to publish all messages to MessageDebuggerAgent.
                 socket_path = os.path.expandvars("$VOLTTRON_HOME/run/messagedebug")
                 socket_path = os.path.expanduser(socket_path)
-                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") +
-                               socket_path)
+                socket_path = ("ipc://{}".format("@" if sys.platform.startswith("linux") else "") + socket_path)
                 self._message_debugger_socket = zmq.Context().socket(zmq.PUB)
                 self._message_debugger_socket.connect(socket_path)
             # Publish the routed message, including the "topic" (status/direction), for use by MessageDebuggerAgent.
             frame_bytes = [topic]
-            frame_bytes.extend(
-                frames)    # [frame if type(frame) is bytes else frame.bytes for frame in frames])
+            frame_bytes.extend(frames)  # [frame if type(frame) is bytes else frame.bytes for frame in frames])
             frame_bytes = serialize_frames(frames)
             # TODO we need to fix the msgdebugger socket if we need it to be connected
             # frame_bytes = [f.bytes for f in frame_bytes]
@@ -179,7 +206,7 @@ class Router(BaseRouter):
             # was if sender == 'control' and user_id == self.default_user_id:
             # now we serialize frames and if user_id is always the sender and not
             # recipents.get('User-Id') or default user name
-            if sender == "control":
+            if sender == CONTROL:
                 if self._ext_routing:
                     self._ext_routing.close_external_connections()
                 self.stop()
@@ -196,8 +223,7 @@ class Router(BaseRouter):
 
                 _log.debug("ROUTER received agent stop message. dropping peer: {}".format(drop))
             except IndexError:
-                _log.error(
-                    f"agentstop called but unable to determine agent from frames sent {frames}")
+                _log.error(f"agentstop called but unable to determine agent from frames sent {frames}")
             return False
         elif subsystem == "query":
             try:
@@ -238,6 +264,7 @@ class Router(BaseRouter):
 
             return frames
         elif subsystem == "pubsub":
+            _log.debug(f"Handling pubsub frames {frames} user_id: {user_id}")
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         elif subsystem == "routing_table":
@@ -258,7 +285,6 @@ class Router(BaseRouter):
         Poll for incoming messages through router socket or other external socket connections
         """
         try:
-            _log.debug("Polling sockets.")
             sockets = dict(self._poller.poll())
         except ZMQError as ex:
             _log.error("ZMQ Error while polling: {}".format(ex))
@@ -267,7 +293,7 @@ class Router(BaseRouter):
             if sock == self.socket:
                 if sockets[sock] == zmq.POLLIN:
                     frames = sock.recv_multipart(copy=False)
-                    _log.debug(f"Frames are: {deserialize_frames(frames)}")
+                    _log.debug(f"Frames: {frames}")
                     self.route(deserialize_frames(frames))
             elif sock in self._ext_routing._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:
