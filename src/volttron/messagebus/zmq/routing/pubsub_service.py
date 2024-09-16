@@ -39,7 +39,7 @@ from volttron.utils.jsonrpc import INVALID_REQUEST, UNAUTHORIZED
 from volttron.messagebus.zmq.serialize_frames import serialize_frames
 
 green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
-from volttron.client.vip.agent.subsystems.pubsub import ProtectedPubSubTopics
+from volttron.types.auth import AuthService
 
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {
@@ -57,8 +57,8 @@ _log = get_logger()
 
 class PubSubService:
 
-    def __init__(self, socket, protected_topics, routing_service, *args, **kwargs):
-        self._logger = logging.getLogger(__name__)
+    def __init__(self, socket, auth_service: AuthService, routing_service, *args, **kwargs):
+        self._logger = get_logger()
 
         def platform_subscriptions():
             return defaultdict(subscriptions)
@@ -70,8 +70,7 @@ class PubSubService:
         self._peer_subscriptions = defaultdict(platform_subscriptions)
         self._vip_sock = socket
         self._user_capabilities = {}
-        self._protected_topics = ProtectedPubSubTopics()
-        self._load_protected_topics(protected_topics)
+        self._auth_service = auth_service
         self._ext_subscriptions = defaultdict(set)
         self._ext_router = routing_service
         if self._ext_router is not None:
@@ -104,9 +103,6 @@ class PubSubService:
     def peer_add(self, peer):
         # To do
         temp = {}
-
-    def add_rabbitmq_agent(self, agent):
-        self._rabbitmq_agent = agent
 
     def external_platform_add(self, instance_name):
         self._logger.debug("PUBSUBSERVICE send subs external {}".format(instance_name))
@@ -561,6 +557,7 @@ class PubSubService:
             # Try sending the message to its recipient
             # Because we are sending directly on the socket we need
             # bytes
+            _log.debug(f"Sending Frames: {frames}")
             serialized = serialize_frames(frames)
             self._vip_sock.send_multipart(serialized, flags=NOBLOCK, copy=False)
         except ZMQError as exc:
@@ -730,20 +727,11 @@ class PubSubService:
         :Return Values:
         None or error message
         """
-        msg = None
-        required_caps = self._protected_topics.get(topic)
 
-        if required_caps:
-            user = peer
-            try:
-                caps = self._user_capabilities[user]
-            except KeyError:
-                return
-            if not set(required_caps) <= set(caps):
-                msg = ('to publish to topic "{}" requires capabilities {},'
-                       " but capability list {} was"
-                       " provided").format(topic, required_caps, caps)
-        return msg
+        if self._auth_service.is_protected_topic(topic_name_pattern=topic):
+
+            if not self._auth_service.check_pubsub_authorization(identity=peer, topic_pattern=topic, access="publish"):
+                return f"Peer: {peer} not authorized to publish to {topic}"
 
     def _get_external_prefix_list(self):
         """
