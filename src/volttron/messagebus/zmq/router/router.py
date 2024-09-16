@@ -30,23 +30,29 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import zmq
+from zmq import NOBLOCK, ZMQError
+
+from volttron.messagebus.zmq import get_logger
+
+_log = get_logger()
+
 from volttron.client.known_identities import CONTROL
-from volttron.server.monitor import Monitor
+from volttron.messagebus.zmq.monitor import  Monitor
+from volttron.server.server_options import ServerOptions
+from volttron.types import MessageBusStopHandler
+from volttron.types.auth import AuthService
 from volttron.types.peer import ServicePeerNotifier
 from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
 from volttron.messagebus.zmq.keystore import encode_key, decode_key
 from volttron.utils import jsonapi
 from volttron.server.logs import FramesFormatter
 from volttron.messagebus.zmq.socket import Address
-from zmq import NOBLOCK, ZMQError
+
 
 from volttron.server.containers import service_repo
 from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
 from volttron.client.known_identities import PLATFORM
 from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
-from volttron.messagebus.zmq import get_logger
-
-_log = get_logger()
 
 
 class Router(BaseRouter):
@@ -55,50 +61,62 @@ class Router(BaseRouter):
     def __init__(
             self,
             *,
-            local_address,
-            addresses=(),
-            context=None,
-            default_user_id=None,
-            monitor=False,
-            tracker=None,
-            instance_name=None,
-            protected_topics={},
-            external_address_file="",
-            msgdebug=None,
-            agent_monitor_frequency=600,
+            server_options: ServerOptions,
+            auth_service: AuthService | None = None,
             service_notifier: ServicePeerNotifier | None = None,
-            auth_enabled: bool = False
+            stop_handler: MessageBusStopHandler | None = None,
+            zmq_context: zmq.Context | None = None
+
+            # local_address: str,
+            # addresses: list[str],
+            # default_user_id: str = None,
+            # auth_service: AuthService | None = None,
+            # auth_enabled: bool = False,
+            # context = None,
+            # service_notifier: ServicePeerNotifier | None = None
+            #
+            # addresses=(),
+            # context=None,
+            # default_user_id=None,
+            # monitor=False,
+            # tracker=None,
+            # instance_name=None,
+            # protected_topics={},
+            # external_address_file="",
+            # msgdebug=None,
+            # agent_monitor_frequency=600,
+            # service_notifier: ServicePeerNotifier | None = None,
+            # auth_enabled: bool = False
     ):
 
-        super(Router, self).__init__(
-            context=context,
-            default_user_id=default_user_id,
+        super().__init__(
+            context=zmq_context,
+            default_user_id=server_options.server_messagebus_id,
             service_notifier=service_notifier,
         )
-        self.local_address = Address(local_address)
-        self._addr = addresses
-        self.addresses = addresses = [Address(addr) for addr in set(addresses)]
+        self.local_address = Address(server_options.local_address)
+        self._addr = server_options.address
+        self.addresses = addresses = [Address(addr) for addr in set(server_options.address)]
 
         # self._secretkey = decode_key(secretkey)
         # self._publickey = decode_key(publickey)
-        self.logger = logging.getLogger("volttron-lib-zmq")
+        self.logger = get_logger()
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.DEBUG)  # .WARNING)
-        self._monitor = monitor
-        self._tracker = tracker
-        self._volttron_central_address = None
-        self._volttron_central_serverkey = None
-        self._instance_name = instance_name
+
+
+
+        self._monitor = True
+        self._tracker = False
+        self._instance_name = server_options.instance_name
         self._bind_web_address = None
-        self._protected_topics = protected_topics
-        self._external_address_file = external_address_file
         self._pubsub = None
         self.ext_rpc = None
-        self._msgdebug = msgdebug
+        self._msgdebug = "zmq"
         self._message_debugger_socket = None
-        self._instance_name = instance_name
-        self._agent_monitor_frequency = agent_monitor_frequency
-        self._auth_enabled = auth_enabled
+        self._agent_monitor_frequency = server_options.agent_monitor_frequency
+        self._auth_enabled = server_options.auth_enabled
+        self._auth_service = auth_service
 
     def setup(self):
 
@@ -141,17 +159,17 @@ class Router(BaseRouter):
             _log.debug("Additional VIP router bound to %s" % address)
         self._ext_routing = None
 
-        self._ext_routing = RoutingService(
-            self.socket,
-            self.context,
-            self._socket_class,
-            self._poller,
-            self._addr,
-            self._instance_name,
-        )
+        # self._ext_routing = RoutingService(
+        #     self.socket,
+        #     self.context,
+        #     self._socket_class,
+        #     self._poller,
+        #     self._addr,
+        #     self._instance_name,
+        # )
 
-        self.pubsub = PubSubService(self.socket, self._protected_topics, self._ext_routing)
-        self.ext_rpc = ExternalRPCService(self.socket, self._ext_routing)
+        self.pubsub = PubSubService(self.socket, self._auth_service, None) # ._protected_topics, self._ext_routing)
+        self.ext_rpc =  None # ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
         _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
 

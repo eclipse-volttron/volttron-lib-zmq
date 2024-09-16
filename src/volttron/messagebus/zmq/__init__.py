@@ -54,6 +54,7 @@ import random
 import sys
 import threading
 import uuid
+from asyncio import Server
 from pathlib import Path
 from threading import local as _local
 from typing import Optional
@@ -61,16 +62,18 @@ from typing import Optional
 import gevent
 import zmq as _zmq
 import zmq.green as zmq
+from gevent.local import local
 
-from volttron.messagebus.logger import get_logger
+from volttron.utils import get_logger
 
 from volttron.client.known_identities import PLATFORM
 # from volttron.client.vip.agent.core import Core
 from volttron.server.containers import service_repo
-from volttron.server.decorators import messagebus
+from volttron.server.decorators import service
 from volttron.server.server_options import ServerOptions
+from volttron.types.auth import AuthService
 from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
-from volttron.types import Message, MessageBus
+from volttron.types import Message, MessageBus, MessageBusStopHandler
 from volttron.types.peer import ServicePeerNotifier
 
 import volttron.messagebus.zmq.zap
@@ -81,29 +84,46 @@ from volttron.client.known_identities import PLATFORM
 
 _log = get_logger()
 
+# TOP level zmq context for the router is here.
+zmq_context: zmq.Context = zmq.Context()
+
 # Main loops
-def zmq_router(opts: argparse.Namespace, notifier, tracker, protected_topics,
-               external_address_file, stop):
+# def zmq_router(opts: argparse.Namespace, notifier, tracker, protected_topics,
+#                external_address_file, stop):
+def zmq_router(server_options: ServerOptions,
+               auth_service: AuthService = None,
+               notifier: ServicePeerNotifier = None,
+               stop_handler: MessageBusStopHandler = None,
+               zmq_context: zmq.Context = None):
+               # , notifier, tracker, protected_topics,
+               # external_address_file, stop):
     try:
         _log.debug("Running zmq router")
-        _log.debug(f"Opts: {opts}")
-        _log.debug(f"Notifier: {notifier}")
-        _log.debug(f"Tracker: {tracker}")
-        _log.debug(f"Protected Topics: {protected_topics}")
-        _log.debug(f"External Address: {external_address_file}")
-        _log.debug(f"Stop: {stop}")
+        # _log.debug(f"Opts: {opts}")
+        # _log.debug(f"Notifier: {notifier}")
+        # _log.debug(f"Tracker: {tracker}")
+        # _log.debug(f"Protected Topics: {protected_topics}")
+        # _log.debug(f"External Address: {external_address_file}")
+        # _log.debug(f"Stop: {stop}")
         Router(
-            local_address=opts.local_address,
-            addresses=opts.address,
-            default_user_id="vip.service",
-            monitor=opts.monitor,
-            tracker=tracker,
-            instance_name=opts.instance_name,
-            protected_topics=protected_topics,
-            external_address_file=external_address_file,
-            msgdebug=opts.msgdebug,
+            server_options=server_options,
+            auth_service=auth_service,
             service_notifier=notifier,
-            auth_enabled=opts.auth_enabled
+            stop_handler=stop_handler,
+            zmq_context=zmq_context
+            #local_address=server_options.local_address,
+            #addresses=server_options.address,
+            #default_user_id="vip.service",
+            #service_notifier=notifier,
+            #monitor=opts.monitor,
+            #tracker=tracker,
+            #instance_name=server_options.instance_name, #.instance_name,
+            #protected_topics=protected_topics,
+            #external_address_file=external_address_file,
+            #msgdebug=opts.msgdebug,
+            #service_notifier=notifier,
+            #auth_enabled=server_options.auth_enabled,
+
         ).run()
     except Exception:
         _log.exception("Unhandled exception in router loop")
@@ -112,20 +132,25 @@ def zmq_router(opts: argparse.Namespace, notifier, tracker, protected_topics,
         pass
     finally:
         _log.debug("In finally")
-        stop(platform_shutdown=True)
+        if stop_handler is not None:
+            stop_handler.message_bus_shutdown()
 
 
-@messagebus
+@service
 class ZmqMessageBus(MessageBus):
     from volttron.types.auth.auth_credentials import CredentialsStore
+    from volttron.types.auth.auth_service import AuthService
 
-    def __init__(self,
-                 opts: argparse.Namespace,
-                 notifier,
-                 tracker,
-                 protected_topics,
-                 external_address_file,
-                 stop):
+    def __init__(self, server_options: ServerOptions,
+                 auth_service: AuthService | None = None,
+                 notifier: ServicePeerNotifier | None = None
+                 ):
+                 # opts: argparse.Namespace,
+                 # notifier,
+                 # tracker,
+                 # protected_topics,
+                 # external_address_file,
+                 # stop):
 
         # cred_service = service_repo.resolve(CredentialsStore)
         # server_creds = cred_service.retrieve_credentials(identity="server")
@@ -134,12 +159,14 @@ class ZmqMessageBus(MessageBus):
         #     self._publickey = creds.publickey
         #     self._secretkey = creds.secretkey
 
-        self._opts = opts
+        self._server_options = server_options
+        self._auth_service = auth_service
+        #self._opts = opts
         self._notifier = notifier
-        self._tracker = tracker
-        self._protected_topics = protected_topics
-        self._external_address_file = external_address_file
-        self._stop = stop
+        #self._tracker = tracker
+        #self._protected_topics = protected_topics
+        #self._external_address_file = external_address_file
+        #self._stop = stop
         self._thread = None
 
     def start(self):
@@ -151,9 +178,13 @@ class ZmqMessageBus(MessageBus):
         self._thread = threading.Thread(target=zmq_router,
                                         daemon=True,
                                         args=[
-                                            self._opts, self._notifier, self._tracker,
-                                            self._protected_topics, self._external_address_file, self._stop
+                                            self._server_options,
+                                            self._auth_service,
+                                            self._notifier,
+                                            self._stop_handler
                                         ])
+        # self._notifier, self._tracker,
+        # self._protected_topics, self._external_address_file, self._stop
         self._thread.start()
         if gevent_support:
             os.environ["GEVENT_SUPPORT"] = "True"
@@ -162,7 +193,8 @@ class ZmqMessageBus(MessageBus):
         return self._thread.is_alive()
 
     def stop(self):
-        pass
+        if self._stop_handler is not None:
+            self._stop_handler.message_bus_shutdown()
 
     def send_vip_message(self, message: Message):
         ...

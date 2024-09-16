@@ -23,6 +23,8 @@
 # }}}
 
 import os
+from symtable import Class
+
 import zmq
 import logging
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
@@ -61,12 +63,12 @@ class RoutingService(object):
 
     def __init__(
             self,
-            socket,
-            context,
+            socket: zmq.Socket,
+            context: zmq.Context,
             socket_class,
-            poller,
-            my_addr,
-            instance_name,
+            poller: zmq.Poller,
+            my_addr: Address,
+            instance_name: str,
             *args,
             **kwargs,
     ):

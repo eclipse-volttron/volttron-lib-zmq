@@ -24,7 +24,7 @@ from volttron.client.known_identities import PLATFORM
 
 # from volttron.messagebus.zmq.connection import ZmqConnectionContext
 # from volttron.messagebus.zmq.zmq_connection import ZMQConnection
-from volttron.messagebus.logger import get_logger
+from volttron.utils import get_logger
 
 _log = get_logger()
 
