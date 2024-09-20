@@ -26,6 +26,7 @@ import logging
 import logging.config
 import os
 import re
+from os import access
 from typing import Literal
 
 import zmq
@@ -183,16 +184,16 @@ class PubSubService:
         if len(frames) < 8:
             return False
         else:
-            # self._logger.debug("Subscribe before: {}".format(self._peer_subscriptions))
-            msg = frames[7]
-            peer = frames[0]
 
-            try:
-                prefix = msg["prefix"]
-                bus = msg["bus"]
-            except KeyError as exc:
-                self._logger.error("Missing key in _peer_subscribe message {}".format(exc))
+            subscriber, receiver, proto, user_id, msg_id, subsystem, op, msg = frames[0:8]
+
+            prefixes = msg.get('prefix')
+            if prefixes is None:
+                self._logger.error("Missing prefix in topic subscription")
                 return False
+
+            if not isinstance(prefixes, list):
+                prefixes = [prefixes]
 
             is_all = msg.get("all_platforms", False)
 
@@ -200,20 +201,18 @@ class PubSubService:
                 platform = "all"
             else:
                 platform = "internal"
-                if self._rabbitmq_agent:
-                    # Subscribe to RMQ bus
-                    self._rabbitmq_agent.vip.pubsub.subscribe("pubsub",
-                                                              prefix,
-                                                              self.publish_callback,
-                                                              all_platforms=is_all)
 
-            for prefix in prefix if isinstance(prefix, list) else [prefix]:
-                err = self._check_topic_authorization(peer, prefix, "subscribe")
-                if err is not None:
-                    # TODO send error message ? raise exception?
+            for prefix in prefixes:
+                errmsg = self._check_topic_authorization(subscriber, prefix, access="subscribe")
+                if errmsg is not None:
+                    self._send_pubsub_error_response(errormsg=errmsg,
+                                                     response_to=subscriber,
+                                                     user_id=receiver,
+                                                     msg_id=msg_id,
+                                                     proto=proto)
                     return False
                 # TODO if there is error in 1 prefix should all fail?
-                self._add_peer_subscription(peer, bus, prefix, platform)
+                self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
             # self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
             if is_all and self._ext_router is not None:
@@ -354,6 +353,28 @@ class PubSubService:
             results = jsonapi.dumps(results)
         return results
 
+    def _send_pubsub_error_response(self, errormsg: str,
+                                    response_to: str,
+                                    user_id: str,
+                                    msg_id: str,
+                                    proto: str = "VIP1"):
+        # Send error message as peer is not authorized to publish to the topic
+        frames = [
+            response_to,
+            "",
+            proto,
+            user_id,
+            msg_id,
+            "error",
+            str(UNAUTHORIZED),
+            str(errormsg),
+            "",
+            "pubsub",
+        ]
+
+        self._send(frames, response_to)
+
+
     def _distribute(self, frames, user_id):
         """
         Distributes the message to all the subscribers subscribed to the same bus and topic. Check if the topic
@@ -381,24 +402,12 @@ class PubSubService:
         # Check if peer is authorized to publish the topic
         errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
-        # Send error message as peer is not authorized to publish to the topic
         if errmsg is not None:
-            try:
-                frames = [
-                    publisher,
-                    "",
-                    proto,
-                    user_id,
-                    msg_id,
-                    "error",
-                    str(UNAUTHORIZED),
-                    str(errmsg),
-                    "",
-                    subsystem,
-                ]
-            except ValueError:
-                self._logger.debug("Value error")
-            self._send(frames, publisher)
+            self._send_pubsub_error_response(errormsg=errmsg,
+                                             response_to=publisher,
+                                             user_id=receiver,
+                                             msg_id=msg_id,
+                                             proto=proto)
             return 0
 
         # First: Try to send to internal platform subscribers
@@ -714,7 +723,7 @@ class PubSubService:
         if result is not None:
             # Form response frame
             response = [sender, recipient, proto, user_id, msg_id, subsystem]
-            response.append("request_response")
+            response.append(f"{'-' * 80}request_response")
             response.append(result)
 
         self._logger.debug(f"Response from op: {op} is {response}")
