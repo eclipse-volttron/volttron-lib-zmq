@@ -39,7 +39,7 @@ INCOMING = 1
 UNROUTABLE = 2
 ERROR = 3
 
-from volttron.messagebus.zmq import get_logger
+from volttron.utils import get_logger
 
 _log = get_logger()
 
