@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 import zmq
 from zmq import NOBLOCK, ZMQError
 
-from volttron.messagebus.zmq import get_logger
+from volttron.utils import get_logger
 
 _log = get_logger()
 
