@@ -26,6 +26,7 @@ import logging
 import logging.config
 import os
 import re
+from typing import Literal
 
 import zmq
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
@@ -207,6 +208,11 @@ class PubSubService:
                                                               all_platforms=is_all)
 
             for prefix in prefix if isinstance(prefix, list) else [prefix]:
+                err = self._check_topic_authorization(peer, prefix, "subscribe")
+                if err is not None:
+                    # TODO send error message ? raise exception?
+                    return False
+                # TODO if there is error in 1 prefix should all fail?
                 self._add_peer_subscription(peer, bus, prefix, platform)
 
             # self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
@@ -373,7 +379,7 @@ class PubSubService:
         """
         publisher, receiver, proto, _, msg_id, subsystem, op, topic, data = frames[0:9]
         # Check if peer is authorized to publish the topic
-        errmsg = self._check_if_protected_topic(user_id, topic)
+        errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
         # Send error message as peer is not authorized to publish to the topic
         if errmsg is not None:
@@ -714,24 +720,20 @@ class PubSubService:
         self._logger.debug(f"Response from op: {op} is {response}")
         return response
 
-    def _check_if_protected_topic(self, peer, topic):
+    def _check_topic_authorization(self, peer, topic, access: Literal["publish", "subscribe"]) -> str | None:
         """
-         Checks if the peer is authorized to publish the topic.
-        :peer frames list of frames
-        :type frames list
-        :topic str
-        :str user_id  UTF-8 encoded User-Id property
-        :returns: None if authorization check is successful or error message
-        :rtype: None or str
+        Checks if the peer is authorized to publish or subscribe to the topic.
 
-        :Return Values:
-        None or error message
+        :param peer: calling agent that wants to publish/subscribe
+        :param topic: topic prefix
+        :param access: publish/subscribe
+        :return: Error string if peer doesn't have access. None if peer has access
+        :rtype: str
         """
-
-        if self._auth_service.is_protected_topic(topic_name_pattern=topic):
-
+        if self._auth_service and self._auth_service.is_protected_topic(topic_name_pattern=topic):
             if not self._auth_service.check_pubsub_authorization(identity=peer, topic_pattern=topic, access="publish"):
-                return f"Peer: {peer} not authorized to publish to {topic}"
+                return f"Peer: {peer} not authorized to {access} to {topic}"
+        return None
 
     def _get_external_prefix_list(self):
         """
@@ -830,7 +832,7 @@ class PubSubService:
                 data,
             ) = frames[0:9]
             # Check if peer is authorized to publish the topic
-            errmsg = self._check_if_protected_topic(user_id, topic)
+            errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
             # peer is not authorized to publish to the topic, send error message to the peer
             if errmsg is not None:
