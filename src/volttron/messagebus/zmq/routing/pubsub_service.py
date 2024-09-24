@@ -211,7 +211,6 @@ class PubSubService:
                                                      msg_id=msg_id,
                                                      proto=proto)
                     return False
-                # TODO if there is error in 1 prefix should all fail?
                 self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
             # self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
@@ -723,7 +722,7 @@ class PubSubService:
         if result is not None:
             # Form response frame
             response = [sender, recipient, proto, user_id, msg_id, subsystem]
-            response.append(f"{'-' * 80}request_response")
+            response.append("request_response")
             response.append(result)
 
         self._logger.debug(f"Response from op: {op} is {response}")
