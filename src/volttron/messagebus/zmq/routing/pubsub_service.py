@@ -397,7 +397,7 @@ class PubSubService:
         :Return Values:
         Number of subscribers to whom the mess
         """
-        publisher, receiver, proto, _, msg_id, subsystem, op, topic, data = frames[0:9]
+        publisher, receiver, proto, user_id, msg_id, subsystem, op, topic, data = frames[0:9]
         # Check if peer is authorized to publish the topic
         errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
@@ -439,11 +439,11 @@ class PubSubService:
         subs = dict()
         # Get subscriptions for all platforms
         try:
-            all_subscriptions = self._peer_subscriptions["all"][bus]
+            all_subscriptions = self._peer_subscriptions["all"]['pubsub']
         except KeyError:
             pass
         try:
-            subscriptions = self._peer_subscriptions["internal"][bus]
+            subscriptions = self._peer_subscriptions["internal"]['pubsub']
         except KeyError:
             pass
 

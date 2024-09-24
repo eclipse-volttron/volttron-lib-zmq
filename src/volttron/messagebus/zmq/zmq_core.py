@@ -239,6 +239,11 @@ class ZmqCore(Core):
         return publickey, secretkey, serverkey
 
     def loop(self, running_event):
+        """
+        Concrete implementation of an event loop.
+        :param running_event:
+        :return:
+        """
         # pre-setup
         # self.context.set(zmq.MAX_SOCKETS, 30690)
         # self.connection = ZMQConnection(self.address,
@@ -343,7 +348,9 @@ class ZmqCore(Core):
                     # volttron.client.vip.socket.Message object that has attributes
                     # for all of the vip elements.  Note these are no longer bytes.
                     # see https://github.com/volttron/volttron/issues/2123
-                    message = sock.recv_vip_object(copy=False)
+                    message = self._connection.recv_vip_object(copy=False)
+                    #message = sock.recv_vip_object(copy=False)
+                    _log.debug(f"Detected incoming message {message}")
                 except ZMQError as exc:
 
                     if exc.errno == EAGAIN:

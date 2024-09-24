@@ -47,6 +47,7 @@ from zmq.utils.monitor import recv_monitor_message
 from .green import Socket as GreenSocket
 
 from volttron.messagebus.zmq import get_logger
+from .serialize_frames import deserialize_frames
 
 _log = get_logger()
 
@@ -184,7 +185,12 @@ class ZmqConnection(Connection):
         )
 
     def recv_vip_object(self, flags=0, copy=True, track=False):
-        return self._socket.recv_vip_object(flags, copy, track)
+        obj: Message = self._socket.recv_vip_object(flags, copy, track)
+
+        if obj.args:
+            obj.args = deserialize_frames(obj.args)
+
+        return obj
 
     def disconnect(self):
         self._socket.disconnect(self._url)
