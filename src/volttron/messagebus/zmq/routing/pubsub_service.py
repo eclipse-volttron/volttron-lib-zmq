@@ -402,6 +402,7 @@ class PubSubService:
         errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
         if errmsg is not None:
+            _log.error(f"AUTH ERROR in distribute method. {errmsg}")
             self._send_pubsub_error_response(errormsg=errmsg,
                                              response_to=publisher,
                                              user_id=receiver,
@@ -844,6 +845,7 @@ class PubSubService:
 
             # peer is not authorized to publish to the topic, send error message to the peer
             if errmsg is not None:
+                _log.error(f"AUTH ERROR in external to local method. {errmsg}")
                 try:
                     frames = [
                         publisher,

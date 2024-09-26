@@ -35,7 +35,6 @@ from zmq import NOBLOCK, ZMQError
 from volttron.utils import get_logger
 
 _log = get_logger()
-
 from volttron.client.known_identities import CONTROL
 from volttron.messagebus.zmq.monitor import  Monitor
 from volttron.server.server_options import ServerOptions
@@ -102,7 +101,7 @@ class Router(BaseRouter):
         # self._publickey = decode_key(publickey)
         self.logger = get_logger()
         if self.logger.level == logging.NOTSET:
-            self.logger.setLevel(logging.DEBUG)  # .WARNING)
+            self.logger.setLevel(logging.WARNING)
 
 
 
