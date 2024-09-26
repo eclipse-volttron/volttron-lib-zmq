@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import urllib
 import uuid
 from errno import EAGAIN, ENOENT, ENOTSOCK
@@ -11,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 import gevent
 import zmq.green as zmq
 from volttron.client.decorators import (connection_builder, core_builder, get_server_credentials)
-from volttron.client.vip.agent import Core
+from volttron.client.vip.agent import Core, VIPError
 from volttron.server.containers import Unresolvable, service_repo
 from volttron.types.agent_context import AgentContext
 from volttron.types.auth.auth_credentials import (Credentials, CredentialsStore, PKICredentials)
@@ -24,7 +25,7 @@ from volttron.client.known_identities import PLATFORM
 
 # from volttron.messagebus.zmq.connection import ZmqConnectionContext
 # from volttron.messagebus.zmq.zmq_connection import ZMQConnection
-from volttron.messagebus.logger import get_logger
+from volttron.utils import get_logger, jsonrpc
 
 _log = get_logger()
 
@@ -238,6 +239,11 @@ class ZmqCore(Core):
         return publickey, secretkey, serverkey
 
     def loop(self, running_event):
+        """
+        Concrete implementation of an event loop.
+        :param running_event:
+        :return:
+        """
         # pre-setup
         # self.context.set(zmq.MAX_SOCKETS, 30690)
         # self.connection = ZMQConnection(self.address,
@@ -342,7 +348,9 @@ class ZmqCore(Core):
                     # volttron.client.vip.socket.Message object that has attributes
                     # for all of the vip elements.  Note these are no longer bytes.
                     # see https://github.com/volttron/volttron/issues/2123
-                    message = sock.recv_vip_object(copy=False)
+                    message = self._connection.recv_vip_object(copy=False)
+                    #message = sock.recv_vip_object(copy=False)
+                    _log.debug(f"Detected incoming message {message}")
                 except ZMQError as exc:
 
                     if exc.errno == EAGAIN:
@@ -382,6 +390,23 @@ class ZmqCore(Core):
                     message.subsystem = "error"
                     sock.send_vip_object(message, copy=False)
                 else:
+                    # We don't want to exit based upon a server issue, however from a client it may be good for
+                    # us to exit the program based upon a failure.
+                    if subsystem == 'error':
+                        if not os.environ.get("VOLTTRON_SERVER"):
+                            # We now are going to make specific error messages be cleaned up and exit
+                            # note this is only for clients not server agents as noted above.
+                            #
+                            # Example message.args is
+                            # [-32001, 'Peer: listener not authorized to subscribe to ', '', 'pubsub']
+                            #
+                            # jsonrpc.UNAUTHORIZED is -32001
+                            if message.args[0] == jsonrpc.UNAUTHORIZED:
+                                handle(message)
+                                _log.error(f"{message.args}")
+                                sys.exit(jsonrpc.UNAUTHORIZED)
+                                return
+
                     handle(message)
 
         _log.debug(f"Starting vip_loop for {self.identity}")

@@ -26,6 +26,8 @@ import logging
 import logging.config
 import os
 import re
+from os import access
+from typing import Literal
 
 import zmq
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
@@ -39,7 +41,7 @@ from volttron.utils.jsonrpc import INVALID_REQUEST, UNAUTHORIZED
 from volttron.messagebus.zmq.serialize_frames import serialize_frames
 
 green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
-from volttron.client.vip.agent.subsystems.pubsub import ProtectedPubSubTopics
+from volttron.types.auth import AuthService
 
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {
@@ -57,8 +59,8 @@ _log = get_logger()
 
 class PubSubService:
 
-    def __init__(self, socket, protected_topics, routing_service, *args, **kwargs):
-        self._logger = logging.getLogger(__name__)
+    def __init__(self, socket, auth_service: AuthService, routing_service, *args, **kwargs):
+        self._logger = get_logger()
 
         def platform_subscriptions():
             return defaultdict(subscriptions)
@@ -70,8 +72,7 @@ class PubSubService:
         self._peer_subscriptions = defaultdict(platform_subscriptions)
         self._vip_sock = socket
         self._user_capabilities = {}
-        self._protected_topics = ProtectedPubSubTopics()
-        self._load_protected_topics(protected_topics)
+        self._auth_service = auth_service
         self._ext_subscriptions = defaultdict(set)
         self._ext_router = routing_service
         if self._ext_router is not None:
@@ -104,9 +105,6 @@ class PubSubService:
     def peer_add(self, peer):
         # To do
         temp = {}
-
-    def add_rabbitmq_agent(self, agent):
-        self._rabbitmq_agent = agent
 
     def external_platform_add(self, instance_name):
         self._logger.debug("PUBSUBSERVICE send subs external {}".format(instance_name))
@@ -186,16 +184,16 @@ class PubSubService:
         if len(frames) < 8:
             return False
         else:
-            # self._logger.debug("Subscribe before: {}".format(self._peer_subscriptions))
-            msg = frames[7]
-            peer = frames[0]
 
-            try:
-                prefix = msg["prefix"]
-                bus = msg["bus"]
-            except KeyError as exc:
-                self._logger.error("Missing key in _peer_subscribe message {}".format(exc))
+            subscriber, receiver, proto, user_id, msg_id, subsystem, op, msg = frames[0:8]
+
+            prefixes = msg.get('prefix')
+            if prefixes is None:
+                self._logger.error("Missing prefix in topic subscription")
                 return False
+
+            if not isinstance(prefixes, list):
+                prefixes = [prefixes]
 
             is_all = msg.get("all_platforms", False)
 
@@ -203,15 +201,17 @@ class PubSubService:
                 platform = "all"
             else:
                 platform = "internal"
-                if self._rabbitmq_agent:
-                    # Subscribe to RMQ bus
-                    self._rabbitmq_agent.vip.pubsub.subscribe("pubsub",
-                                                              prefix,
-                                                              self.publish_callback,
-                                                              all_platforms=is_all)
 
-            for prefix in prefix if isinstance(prefix, list) else [prefix]:
-                self._add_peer_subscription(peer, bus, prefix, platform)
+            for prefix in prefixes:
+                errmsg = self._check_topic_authorization(subscriber, prefix, access="subscribe")
+                if errmsg is not None:
+                    self._send_pubsub_error_response(errormsg=errmsg,
+                                                     response_to=subscriber,
+                                                     user_id=receiver,
+                                                     msg_id=msg_id,
+                                                     proto=proto)
+                    return False
+                self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
             # self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
             if is_all and self._ext_router is not None:
@@ -352,6 +352,28 @@ class PubSubService:
             results = jsonapi.dumps(results)
         return results
 
+    def _send_pubsub_error_response(self, errormsg: str,
+                                    response_to: str,
+                                    user_id: str,
+                                    msg_id: str,
+                                    proto: str = "VIP1"):
+        # Send error message as peer is not authorized to publish to the topic
+        frames = [
+            response_to,
+            "",
+            proto,
+            user_id,
+            msg_id,
+            "error",
+            str(UNAUTHORIZED),
+            str(errormsg),
+            "",
+            "pubsub",
+        ]
+
+        self._send(frames, response_to)
+
+
     def _distribute(self, frames, user_id):
         """
         Distributes the message to all the subscribers subscribed to the same bus and topic. Check if the topic
@@ -375,28 +397,17 @@ class PubSubService:
         :Return Values:
         Number of subscribers to whom the mess
         """
-        publisher, receiver, proto, _, msg_id, subsystem, op, topic, data = frames[0:9]
+        publisher, receiver, proto, user_id, msg_id, subsystem, op, topic, data = frames[0:9]
         # Check if peer is authorized to publish the topic
-        errmsg = self._check_if_protected_topic(user_id, topic)
+        errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
-        # Send error message as peer is not authorized to publish to the topic
         if errmsg is not None:
-            try:
-                frames = [
-                    publisher,
-                    "",
-                    proto,
-                    user_id,
-                    msg_id,
-                    "error",
-                    str(UNAUTHORIZED),
-                    str(errmsg),
-                    "",
-                    subsystem,
-                ]
-            except ValueError:
-                self._logger.debug("Value error")
-            self._send(frames, publisher)
+            _log.error(f"AUTH ERROR in distribute method. {errmsg}")
+            self._send_pubsub_error_response(errormsg=errmsg,
+                                             response_to=publisher,
+                                             user_id=receiver,
+                                             msg_id=msg_id,
+                                             proto=proto)
             return 0
 
         # First: Try to send to internal platform subscribers
@@ -429,11 +440,11 @@ class PubSubService:
         subs = dict()
         # Get subscriptions for all platforms
         try:
-            all_subscriptions = self._peer_subscriptions["all"][bus]
+            all_subscriptions = self._peer_subscriptions["all"]['pubsub']
         except KeyError:
             pass
         try:
-            subscriptions = self._peer_subscriptions["internal"][bus]
+            subscriptions = self._peer_subscriptions["internal"]['pubsub']
         except KeyError:
             pass
 
@@ -561,6 +572,7 @@ class PubSubService:
             # Try sending the message to its recipient
             # Because we are sending directly on the socket we need
             # bytes
+            _log.debug(f"Sending Frames: {frames}")
             serialized = serialize_frames(frames)
             self._vip_sock.send_multipart(serialized, flags=NOBLOCK, copy=False)
         except ZMQError as exc:
@@ -717,33 +729,20 @@ class PubSubService:
         self._logger.debug(f"Response from op: {op} is {response}")
         return response
 
-    def _check_if_protected_topic(self, peer, topic):
+    def _check_topic_authorization(self, peer, topic, access: Literal["publish", "subscribe"]) -> str | None:
         """
-         Checks if the peer is authorized to publish the topic.
-        :peer frames list of frames
-        :type frames list
-        :topic str
-        :str user_id  UTF-8 encoded User-Id property
-        :returns: None if authorization check is successful or error message
-        :rtype: None or str
+        Checks if the peer is authorized to publish or subscribe to the topic.
 
-        :Return Values:
-        None or error message
+        :param peer: calling agent that wants to publish/subscribe
+        :param topic: topic prefix
+        :param access: publish/subscribe
+        :return: Error string if peer doesn't have access. None if peer has access
+        :rtype: str
         """
-        msg = None
-        required_caps = self._protected_topics.get(topic)
-
-        if required_caps:
-            user = peer
-            try:
-                caps = self._user_capabilities[user]
-            except KeyError:
-                return
-            if not set(required_caps) <= set(caps):
-                msg = ('to publish to topic "{}" requires capabilities {},'
-                       " but capability list {} was"
-                       " provided").format(topic, required_caps, caps)
-        return msg
+        if self._auth_service and self._auth_service.is_protected_topic(topic_name_pattern=topic):
+            if not self._auth_service.check_pubsub_authorization(identity=peer, topic_pattern=topic, access="publish"):
+                return f"Peer: {peer} not authorized to {access} to {topic}"
+        return None
 
     def _get_external_prefix_list(self):
         """
@@ -842,10 +841,11 @@ class PubSubService:
                 data,
             ) = frames[0:9]
             # Check if peer is authorized to publish the topic
-            errmsg = self._check_if_protected_topic(user_id, topic)
+            errmsg = self._check_topic_authorization(user_id, topic, "publish")
 
             # peer is not authorized to publish to the topic, send error message to the peer
             if errmsg is not None:
+                _log.error(f"AUTH ERROR in external to local method. {errmsg}")
                 try:
                     frames = [
                         publisher,

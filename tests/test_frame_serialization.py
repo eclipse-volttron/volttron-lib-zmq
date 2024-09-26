@@ -27,6 +27,7 @@ from volttron.messagebus.zmq.serialize_frames import (
     deserialize_frames,
     serialize_frames,
 )
+from volttron.types import Message
 
 
 def test_can_deserialize_homogeneous_string():
@@ -62,3 +63,37 @@ def test_mixed_array():
 
     for r in range(len(original)):
         assert original[r] == after_deserialize[r], f"Element {r} is not the same."
+
+def test_only_deserialize_frames():
+
+    frames = ['listener',
+              '',
+              'VIP1',
+              'listener',
+              '1727127367.000000.8728026698659.000000',
+              'pubsub',
+              'publish',
+              'heartbeat/listener',
+              {"bus": "", "headers": {"TimeStamp": "2024-09-23T21:36:06.763330 00:00", "min_compatible_version": "3.0", "max_compatible_version": ""}, "message": None}]
+
+    serialized = serialize_frames(frames)
+    new_frames = deserialize_frames(serialized)
+
+    for index, ele in enumerate(frames):
+        if isinstance(ele, dict):
+            for k, v in ele.items():
+                assert k in new_frames[index]
+                assert v == new_frames[index][k]
+        else:
+            assert ele == new_frames[index]
+
+def test_none_deserialization():
+    data = [0, None, True, 34.2, 'This is data for sending']
+    serialized = serialize_frames(data)
+    new_data = deserialize_frames(serialized)
+
+    for index, value in enumerate(data):
+        if value is None:
+            assert new_data[index] == ''
+        else:
+            assert new_data[index] == value
