@@ -26,8 +26,6 @@ import logging
 import os
 import sys
 import uuid
-from typing import Optional
-from urllib.parse import urlparse
 
 import zmq
 from zmq import NOBLOCK, ZMQError
@@ -93,7 +91,10 @@ class Router(BaseRouter):
             default_user_id=server_options.server_messagebus_id,
             service_notifier=service_notifier,
         )
-        self.local_address = Address(server_options.local_address)
+        local_addr = f"ipc://@{server_options.volttron_home.as_posix()}/run/vip.socket"
+        self.local_address = Address(local_addr)
+        _log.debug(f"Local address is: {self.local_address}")
+        #self.local_address = Address(server_options.local_address)
         self._addr = server_options.address
         self.addresses = addresses = [Address(addr) for addr in set(server_options.address)]
 
