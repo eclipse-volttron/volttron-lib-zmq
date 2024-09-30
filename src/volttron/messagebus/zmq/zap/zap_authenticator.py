@@ -61,9 +61,9 @@ class ZapAuthenticator(Authenticator):
         #     self._read_protected_topics_file,
         # )
 
-    # def is_authenticated(self, *, identity: Identity) -> bool:
-    #     return identity in self._authenticated
-    #
+    def is_authenticated(self, *, identity: Identity) -> bool:
+        return identity in self._authenticated
+
     # def authenticate(self, *, credentials: Credentials) -> bool:
     #     if self._options.auth_enabled:
     #         if not self._credentials_store.has_identity(credentials.identity):
