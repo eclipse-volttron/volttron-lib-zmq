@@ -2,15 +2,15 @@ import logging
 import re
 
 import gevent
+import gevent.core
 import zmq.green as zmq
 
-from volttron.types.auth import PublicCredentials
+
 from volttron.types.auth.auth_service import Authenticator, CredentialsStore, Credentials
 from volttron.types.auth.authz_types import Identity
-# from volttron.types.auth import Authenticator, CredentialsStore, Credentials
 from volttron.server.server_options import ServerOptions
 from volttron.decorators import service
-from volttron.types import Service
+
 
 from .credentials_creator import encode_key
 
@@ -64,13 +64,13 @@ class ZapAuthenticator(Authenticator):
     def is_authenticated(self, *, identity: Identity) -> bool:
         return identity in self._authenticated
 
-    def authenticate(self, *, credentials: Credentials) -> bool:
-        if self._options.auth_enabled:
-            if not self._credentials_store.has_identity(credentials.identity):
-                # Might be other stuff here to work with.
-                return False
-        # creds = self._credentials_store.retrieve_credentials(credentials.identity)
-        return True
+    # def authenticate(self, *, credentials: Credentials) -> bool:
+    #     if self._options.auth_enabled:
+    #         if not self._credentials_store.has_identity(credentials.identity):
+    #             # Might be other stuff here to work with.
+    #             return False
+    #     # creds = self._credentials_store.retrieve_credentials(credentials.identity)
+    #     return True
 
     def zap_loop(self):
         """
