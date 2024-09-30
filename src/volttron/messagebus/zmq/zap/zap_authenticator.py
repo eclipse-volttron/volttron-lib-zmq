@@ -4,17 +4,17 @@ import re
 import gevent
 import zmq.green as zmq
 
-from volttron.types.auth import PublicCredentials
+# Import callable time function.
+from time import time
+
 from volttron.types.auth.auth_service import Authenticator, CredentialsStore, Credentials
 from volttron.types.auth.authz_types import Identity
-# from volttron.types.auth import Authenticator, CredentialsStore, Credentials
 from volttron.server.server_options import ServerOptions
 from volttron.decorators import service
-from volttron.types import Service
 
 from .credentials_creator import encode_key
 
-from volttron.messagebus.zmq import get_logger
+from volttron.utils import get_logger
 
 _log = get_logger()
 
@@ -49,7 +49,7 @@ class ZapAuthenticator(Authenticator):
 
         self._zap_greenlet = gevent.spawn(self.zap_loop)
 
-        # TODO: How do we want to do the permisive thing here.
+        # TODO: How do we want to do the permissive thing here.
         # if self.allow_any:
         #     _log.warning("insecure permissive authentication enabled")
         # self.read_auth_file()
@@ -61,16 +61,16 @@ class ZapAuthenticator(Authenticator):
         #     self._read_protected_topics_file,
         # )
 
-    def is_authenticated(self, *, identity: Identity) -> bool:
-        return identity in self._authenticated
-
-    def authenticate(self, *, credentials: Credentials) -> bool:
-        if self._options.auth_enabled:
-            if not self._credentials_store.has_identity(credentials.identity):
-                # Might be other stuff here to work with.
-                return False
-        # creds = self._credentials_store.retrieve_credentials(credentials.identity)
-        return True
+    # def is_authenticated(self, *, identity: Identity) -> bool:
+    #     return identity in self._authenticated
+    #
+    # def authenticate(self, *, credentials: Credentials) -> bool:
+    #     if self._options.auth_enabled:
+    #         if not self._credentials_store.has_identity(credentials.identity):
+    #             # Might be other stuff here to work with.
+    #             return False
+    #     # creds = self._credentials_store.retrieve_credentials(credentials.identity)
+    #     return True
 
     def zap_loop(self):
         """
@@ -86,7 +86,6 @@ class ZapAuthenticator(Authenticator):
         self._is_connected = True
         self._zap_greenlet = gevent.getcurrent()
         sock = self.zap_socket
-        time = gevent.core.time
         blocked = {}
         wait_list = []
         timeout = None
