@@ -5,6 +5,9 @@ import gevent
 import gevent.core
 import zmq.green as zmq
 
+# Import callable time function.
+from time import time
+
 
 from volttron.types.auth.auth_service import Authenticator, CredentialsStore, Credentials
 from volttron.types.auth.authz_types import Identity
@@ -14,7 +17,7 @@ from volttron.decorators import service
 
 from .credentials_creator import encode_key
 
-from volttron.messagebus.zmq import get_logger
+from volttron.utils import get_logger
 
 _log = get_logger()
 
@@ -49,7 +52,7 @@ class ZapAuthenticator(Authenticator):
 
         self._zap_greenlet = gevent.spawn(self.zap_loop)
 
-        # TODO: How do we want to do the permisive thing here.
+        # TODO: How do we want to do the permissive thing here.
         # if self.allow_any:
         #     _log.warning("insecure permissive authentication enabled")
         # self.read_auth_file()
@@ -86,7 +89,6 @@ class ZapAuthenticator(Authenticator):
         self._is_connected = True
         self._zap_greenlet = gevent.getcurrent()
         sock = self.zap_socket
-        time = gevent.core.time
         blocked = {}
         wait_list = []
         timeout = None
