@@ -46,7 +46,7 @@ from zmq.utils.monitor import recv_monitor_message
 
 from .green import Socket as GreenSocket
 
-from volttron.messagebus.zmq import get_logger
+from volttron.utils import get_logger
 from .serialize_frames import deserialize_frames
 
 _log = get_logger()
