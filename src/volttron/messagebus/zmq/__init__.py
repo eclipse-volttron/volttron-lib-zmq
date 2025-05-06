@@ -47,39 +47,25 @@
 # """
 from __future__ import annotations
 
-import argparse
 import bisect
-import logging
 import random
-import sys
 import threading
-import uuid
-from pathlib import Path
-from threading import local as _local
-from typing import Optional
 
 import gevent
-import zmq as _zmq
 import zmq.green as zmq
-from gevent.local import local
 
 from volttron.utils import get_logger
 
-from volttron.client.known_identities import PLATFORM
 # from volttron.client.vip.agent.core import Core
-from volttron.server.containers import service_repo
 from volttron.server.decorators import service
 from volttron.server.server_options import ServerOptions
 from volttron.types.auth import AuthService
-from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
 from volttron.types import Message, MessageBus, MessageBusStopHandler
 from volttron.types.peer import ServicePeerNotifier
 
-import volttron.messagebus.zmq.zap
 from volttron.messagebus.zmq.router import Router
 from volttron.messagebus.zmq.zmq_connection import ZmqConnection
 from volttron.messagebus.zmq.zmq_core import ZmqCore
-from volttron.client.known_identities import PLATFORM
 
 _log = get_logger()
 
@@ -138,7 +124,6 @@ def zmq_router(server_options: ServerOptions,
 
 @service
 class ZmqMessageBus(MessageBus):
-    from volttron.types.auth.auth_credentials import CredentialsStore
     from volttron.types.auth.auth_service import AuthService
 
     def __init__(self, server_options: ServerOptions,
