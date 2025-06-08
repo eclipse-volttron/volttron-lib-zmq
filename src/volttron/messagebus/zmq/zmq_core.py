@@ -25,9 +25,9 @@ from volttron.client.known_identities import PLATFORM
 
 # from volttron.messagebus.zmq.connection import ZmqConnectionContext
 # from volttron.messagebus.zmq.zmq_connection import ZMQConnection
-from volttron.utils import get_logger, jsonrpc
+from volttron.utils import jsonrpc
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 __connection_builders__: dict[str, ZmqConnectionBuilder] = {}
 __agent_contexts__: dict[str, AgentContext] = {}

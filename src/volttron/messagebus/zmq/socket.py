@@ -62,9 +62,8 @@ from zmq import (DEALER, NOBLOCK, RCVMORE, ROUTER, SNDMORE, ZMQError, curve_keyp
 
 __all__ = ["Address", "ProtocolError", "Message", "nonblocking"]
 
-from volttron.utils import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 
 @contextmanager

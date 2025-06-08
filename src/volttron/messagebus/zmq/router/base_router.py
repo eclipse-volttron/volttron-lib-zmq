@@ -39,9 +39,8 @@ INCOMING = 1
 UNROUTABLE = 2
 ERROR = 3
 
-from volttron.utils import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 # Optimizing by pre-creating frames
 _ROUTE_ERRORS = {
