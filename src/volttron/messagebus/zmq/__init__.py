@@ -166,6 +166,7 @@ class ZmqMessageBus(MessageBus):
         #self._external_address_file = external_address_file
         #self._stop = stop
         self._thread = None
+        self._router_instance = None
 
     def start(self):
         import os
@@ -193,11 +194,32 @@ class ZmqMessageBus(MessageBus):
         
         :return: Federation bridge implementation
         """
+        router = self._get_router_instance()
+        if not router:
+            raise ValueError("Router instance is not available. Cannot create federation bridge.")
         return ZmqFederationBridge(
-            message_bus=self,  # Reference to the message bus itself
+            router=router,
             auth_service=self._auth_service
         )
 
+
+
+    def _get_router_instance(self) -> Router:
+        """
+        Get the Router instance for this message bus.
+        This is needed by the federation bridge to access the routing service.
+        
+        :return: Router instance
+        """
+        # This will depend on how you store or access the Router in your ZmqMessageBus
+        # You might need to store a reference to it when it's created in the zmq_router function
+        # Or find another way to access it
+        
+        # Example (you'll need to adapt this to your implementation):
+        if hasattr(self, '_router_instance'):
+            return self._router_instance
+        else:
+            raise ValueError("Router instance not available")
     def is_running(self):
         return self._thread.is_alive()
 
