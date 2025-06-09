@@ -76,6 +76,7 @@ class ZmqConnection(Connection):
         self._identity: Identity = self._conn_context.identity
         self._logger = logging.getLogger(__name__)
         self._logger.debug(f"ZMQ connection {self._identity}")
+        self._federation_platforms = {}
 
     @property
     def connected(self) -> bool:

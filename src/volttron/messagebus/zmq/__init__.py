@@ -74,7 +74,6 @@ from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreato
 from volttron.types import Message, MessageBus, MessageBusStopHandler
 from volttron.types.peer import ServicePeerNotifier
 
-import volttron.messagebus.zmq.zap
 from volttron.messagebus.zmq.router import Router
 from volttron.messagebus.zmq.zmq_connection import ZmqConnection
 from volttron.messagebus.zmq.zmq_core import ZmqCore
@@ -188,6 +187,17 @@ class ZmqMessageBus(MessageBus):
         if gevent_support:
             os.environ["GEVENT_SUPPORT"] = "True"
 
+    def create_federation_bridge(self) -> FederationBridge:
+        """
+        Create a ZMQ-specific federation bridge
+        
+        :return: Federation bridge implementation
+        """
+        return ZmqFederationBridge(
+            message_bus=self,  # Reference to the message bus itself
+            auth_service=self._auth_service
+        )
+
     def is_running(self):
         return self._thread.is_alive()
 
@@ -201,5 +211,8 @@ class ZmqMessageBus(MessageBus):
     def receive_vip_message(self) -> Message:
         ...
 
+
+from volttron.types.federation import FederationBridge
+from volttron.messagebus.zmq.federation import ZmqFederationBridge
 
 __all__: list[str] = ['ZmqConnection', 'ZmqCore']
