@@ -103,7 +103,7 @@ class BaseRouter(object):
             self,
             context=None,
             default_user_id=None,
-            service_notifier=Optional[ServicePeerNotifier],
+            service_notifier:Optional[ServicePeerNotifier]=None,
     ):
         """Initialize the object instance.
 

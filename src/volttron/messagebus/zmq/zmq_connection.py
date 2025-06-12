@@ -24,7 +24,7 @@
 # completeness, or usefulness or any information, apparatus, product,
 # software, or process disclosed, or represents that its use would not infringe
 # privately owned rights. Reference herein to any specific commercial product,
-# process, or service by trade name, trademark, manufactufrer, or otherwise
+# process, or service by trade name, trademark, manufacturer, or otherwise
 # does not necessarily constitute or imply its endorsement, recommendation, or
 # favoring by the United States Government or any agency thereof, or
 # Battelle Memorial Institute. The views and opinions of authors expressed
@@ -157,7 +157,9 @@ class ZmqConnection(Connection):
         self._vip_handler = handler
 
     def send_vip_object(self, message: Message, flags: int = 0, copy: bool = True, track: bool = False):
-        assert self._socket
+        """Send VIP message object"""
+        if not self._socket:
+            raise RuntimeError("Socket not connected. Call open_connection() first.")
         self._socket.send_vip_object(message, flags, copy, track)
 
     def send_vip(
@@ -172,6 +174,10 @@ class ZmqConnection(Connection):
             copy=True,
             track=False,
     ):
+        """Send VIP message with individual components"""
+        if not self._socket:
+            raise RuntimeError("Socket not connected. Call open_connection() first.")
+            
         _log.debug(f"ZmqConnection.send_vip: {peer}, {subsystem}, {args}, {msg_id}, {user}, {via}, {flags}, {copy}, {track}")
         self._socket.send_vip(
             peer,
@@ -186,6 +192,10 @@ class ZmqConnection(Connection):
         )
 
     def recv_vip_object(self, flags=0, copy=True, track=False):
+        """Receive VIP message object"""
+        if not self._socket:
+            raise RuntimeError("Socket not connected. Call open_connection() first.")
+            
         obj: Message = self._socket.recv_vip_object(flags, copy, track)
 
         if obj.args:
@@ -197,8 +207,17 @@ class ZmqConnection(Connection):
         self._socket.disconnect(self._url)
 
     def close_connection(self, linger=5):
-        """This method closes ZeroMQ socket"""
-        self._socket.close(linger)
-        _log.debug("********************************************************************")
-        _log.debug("Closing connection to ZMQ: {}".format(self._identity))
-        _log.debug("********************************************************************")
+        """Close ZeroMQ socket connection"""
+        if self._socket:
+            if self._connection_url:
+                try:
+                    self._socket.disconnect(self._connection_url)
+                except Exception as e:
+                    _log.debug(f"Error disconnecting from {self._connection_url}: {e}")
+            
+            self._socket.close(linger)
+            self._socket = None
+            
+            _log.debug("********************************************************************")
+            _log.debug(f"Closed connection to ZMQ: {self._identity}")
+            _log.debug("********************************************************************")
