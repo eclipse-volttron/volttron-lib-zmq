@@ -22,6 +22,7 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
+from collections import defaultdict
 import logging
 import os
 import sys
@@ -117,6 +118,18 @@ class Router(BaseRouter):
             self.logger.setLevel(logging.WARNING)
 
 
+        # Use the correct field names from ServerOptions
+        self._federation_enabled = server_options.enable_federation
+        self._federation_url = server_options.federation_url  # Not federation_server_url
+        self._instance_name = server_options.instance_name
+        self._auth_enabled = server_options.auth_enabled
+        
+        # Set up federation store path
+        self._federation_store_path = server_options.volttron_home / "federation"
+        
+        # Initialize federation components
+        self._federation_manager = None
+        self._message_queues = defaultdict(lambda: deque(maxlen=10000))
 
         self._monitor = True
         self._tracker = False
@@ -318,6 +331,7 @@ class Router(BaseRouter):
             sockets = dict(self._poller.poll())
         except ZMQError as ex:
             _log.error("ZMQ Error while polling: {}".format(ex))
+            return
 
         for sock in sockets:
             if sock == self.socket:
