@@ -31,6 +31,30 @@ from volttron.messagebus.zmq.serialize_frames import serialize_frames
 from zmq import EHOSTUNREACH, EINVAL, NOBLOCK, ZMQError
 
 from volttron.messagebus.zmq.router.servicepeer import ServicePeerNotifier
+from typing import Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Protocol
+    
+    class SocketLike(Protocol):
+        identity: bytes
+        router_mandatory: bool
+        sndtimeo: int
+        tcp_keepalive: bool
+        tcp_keepalive_idle: int
+        tcp_keepalive_intvl: int
+        tcp_keepalive_cnt: int
+        zap_domain: bytes
+        
+        def bind(self, address: str) -> None: ...
+        def send_multipart(self, frames: list, flags: int = 0, copy: bool = True) -> None: ...
+        def recv_multipart(self, flags: int = 0, copy: bool = True) -> list: ...
+        def close(self, linger: int = 1000) -> None: ...
+        def getsockopt(self, option: int) -> any: ...
+        def set_hwm(self, value: int) -> None: ...
+        def get_monitor_socket(self) -> 'SocketLike': ...
+        def poll(self, timeout: int = None) -> int: ...
+
 
 __all__ = ["BaseRouter", "OUTGOING", "INCOMING", "UNROUTABLE", "ERROR"]
 
@@ -88,7 +112,10 @@ class BaseRouter(object):
         """
         self.context = context or self._context_class.instance()
         self.default_user_id = default_user_id
-        self.socket = None
+        if TYPE_CHECKING:
+            self.socket: Union[zmq.Socket, 'SocketLike', None] = None
+        else:
+            self.socket = None
         self._peers = set()
         self._poller = self._poller_class()
         self._ext_sockets = []
@@ -204,12 +231,11 @@ class BaseRouter(object):
     def _distribute(self, *parts):
         drop = set()
         empty = ""
-        frames = [empty, empty, "VIP1", empty, empty]
-        frames.extend(parts)
-        # _log.debug(f"_distribute {parts}")
         for peer in self._peers:
-            frames[0] = peer
+            frames = [peer, empty, "VIP1", empty, empty]
+            frames.extend(parts)
             drop.update(self._send(frames))
+
         for peer in drop:
             self._drop_peer(peer)
             if self._service_notifier:

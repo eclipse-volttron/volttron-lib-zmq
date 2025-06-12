@@ -141,7 +141,7 @@ class Router(BaseRouter):
         self._message_debugger_socket = None
         self._agent_monitor_frequency = server_options.agent_monitor_frequency
         self._auth_enabled = server_options.auth_enabled
-        self._auth_service = auth_service
+        self._auth_service = auth_service         
 
     def setup(self):
 
