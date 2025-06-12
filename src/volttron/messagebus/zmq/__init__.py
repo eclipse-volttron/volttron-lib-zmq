@@ -169,26 +169,66 @@ class ZmqMessageBus(MessageBus):
         self._thread = None
         self._router_instance = None
         self._stop_handler = None
+        self._startup_error = None
+        self._startup_event = threading.Event()
+        self._shutdown_event = threading.Event()
 
     def start(self):
+        """Start the ZMQ message bus"""
+        if self.is_running():
+            _log.debug("Message bus already running")
+            return
+            
+        _log.debug("Starting ZMQ message bus")
+        self._startup_error = None
+        self._startup_event.clear()
+        self._shutdown_event.clear()
+        
         import os
         env = os.environ.copy()
-
-        if gevent_support := env.get("GEVENT_SUPPORT") == "True":
+        gevent_support = env.get("GEVENT_SUPPORT") == "True"
+        if gevent_support:
             del os.environ["GEVENT_SUPPORT"]
-        self._thread = threading.Thread(target=zmq_router,
-                                        daemon=True,
-                                        args=[
-                                            self._server_options,
-                                            self._auth_service,
-                                            self._notifier,
-                                            self._stop_handler
-                                        ])
-        # self._notifier, self._tracker,
-        # self._protected_topics, self._external_address_file, self._stop
+        
+        def router_wrapper():
+            try:
+                _log.debug("Router thread starting")
+                self._startup_event.set()
+                
+                # Create stop handler that signals shutdown
+                class ThreadStopHandler:
+                    def __init__(self, shutdown_event):
+                        self.shutdown_event = shutdown_event
+                    
+                    def message_bus_shutdown(self):
+                        _log.debug("Router shutdown requested")
+                        self.shutdown_event.set()
+                
+                # Set the stop handler
+                if self.get_stop_handler() is None:
+                    self.set_stop_handler(ThreadStopHandler(self._shutdown_event))
+                
+                zmq_router(
+                    self._server_options,
+                    self._auth_service,
+                    self._notifier,
+                    self.get_stop_handler()
+                )
+            except Exception as e:
+                _log.error(f"Router thread failed: {e}")
+                self._startup_error = e
+                raise
+            finally:
+                _log.debug("Router thread ending")
+                self._shutdown_event.set()
+        
+        self._thread = threading.Thread(target=router_wrapper, daemon=True)
         self._thread.start()
+        
         if gevent_support:
             os.environ["GEVENT_SUPPORT"] = "True"
+        
+        _log.debug("ZMQ message bus thread started")
 
     def create_federation_bridge(self) -> FederationBridge:
         """
@@ -218,12 +258,56 @@ class ZmqMessageBus(MessageBus):
             return self._router_instance
         else:
             raise ValueError("Router instance not available")
+        
     def is_running(self):
-        return self._thread.is_alive()
+        """Check if ZMQ message bus is running"""
+        if self._thread is None:
+            return False
+        
+        is_alive = self._thread.is_alive()
+        
+        # If thread died, check if there was a startup error
+        if not is_alive and self._startup_error:
+            _log.error(f"Message bus thread failed with error: {self._startup_error}")
+        
+        return is_alive
+    
+    def wait_for_startup(self, timeout=5.0):
+        """Wait for the message bus to start up"""
+        return self._startup_event.wait(timeout)
+    
+    def get_startup_error(self):
+        """Get any startup error that occurred"""
+        return self._startup_error
 
     def stop(self):
-        if self._stop_handler is not None:
-            self._stop_handler.message_bus_shutdown()
+        """Stop the ZMQ message bus"""
+        _log.debug("Stopping ZMQ message bus")
+        
+        if not self.is_running():
+            _log.debug("Message bus not running, nothing to stop")
+            return
+        
+        # Signal shutdown
+        if self.get_stop_handler() is not None:
+            try:
+                self.get_stop_handler().message_bus_shutdown()
+            except Exception as e:
+                _log.error(f"Error calling stop handler: {e}")
+        
+        # Wait for graceful shutdown
+        shutdown_ok = self._shutdown_event.wait(timeout=3.0)
+        if not shutdown_ok:
+            _log.warning("Router did not shutdown gracefully")
+        
+        # Wait for thread to finish
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                _log.warning("Message bus thread did not stop cleanly")
+            else:
+                _log.debug("Message bus thread stopped")
+            self._thread = None
 
     def send_vip_message(self, message: Message):
         ...
