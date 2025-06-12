@@ -63,7 +63,7 @@ import zmq as _zmq
 import zmq.green as zmq
 from gevent.local import local
 
-
+import volttron.messagebus.zmq.zap
 from volttron.client.known_identities import PLATFORM
 # from volttron.client.vip.agent.core import Core
 from volttron.server.containers import service_repo
@@ -156,6 +156,7 @@ class ZmqMessageBus(MessageBus):
         #     creds = credentials_store.retrieve_credentials(identity=PLATFORM)
         #     self._publickey = creds.publickey
         #     self._secretkey = creds.secretkey
+        super().__init__()
 
         self._server_options = server_options
         self._auth_service = auth_service
@@ -167,6 +168,7 @@ class ZmqMessageBus(MessageBus):
         #self._stop = stop
         self._thread = None
         self._router_instance = None
+        self._stop_handler = None
 
     def start(self):
         import os
@@ -210,13 +212,9 @@ class ZmqMessageBus(MessageBus):
         This is needed by the federation bridge to access the routing service.
         
         :return: Router instance
+        :raises ValueError: If router instance is not available
         """
-        # This will depend on how you store or access the Router in your ZmqMessageBus
-        # You might need to store a reference to it when it's created in the zmq_router function
-        # Or find another way to access it
-        
-        # Example (you'll need to adapt this to your implementation):
-        if hasattr(self, '_router_instance'):
+        if hasattr(self, '_router_instance') and self._router_instance is not None:
             return self._router_instance
         else:
             raise ValueError("Router instance not available")
@@ -234,7 +232,7 @@ class ZmqMessageBus(MessageBus):
         ...
 
 
-from volttron.types.federation import FederationBridge
-from volttron.messagebus.zmq.federation import ZmqFederationBridge
+#from volttron.types.federation import FederationBridge
+#from volttron.messagebus.zmq.federation import ZmqFederationBridge
 
 __all__: list[str] = ['ZmqConnection', 'ZmqCore']
