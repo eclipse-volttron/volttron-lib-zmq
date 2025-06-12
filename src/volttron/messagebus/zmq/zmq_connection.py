@@ -100,13 +100,13 @@ class ZmqConnection(Connection):
         _log.debug(f"Waiting for message recv")
         return self.recv_vip_object()
 
-    def open_connection(self, type=None):
-        if type == zmq.DEALER:
+    def open_connection(self, socket_type=zmq.DEALER):
+        if socket_type == zmq.DEALER:
             self._socket = GreenSocket(self._zmq_context)
             if self._identity:
                 self._socket.identity = self._identity.encode("utf-8")
         else:
-            self._socket = zmq.Socket()
+            self._socket = self._zmq_context.socket(socket_type)
 
     def set_properties(self, flags):
         hwm = flags.get("hwm", 6000)
@@ -209,11 +209,12 @@ class ZmqConnection(Connection):
     def close_connection(self, linger=5):
         """Close ZeroMQ socket connection"""
         if self._socket:
-            if self._connection_url:
-                try:
-                    self._socket.disconnect(self._connection_url)
-                except Exception as e:
-                    _log.debug(f"Error disconnecting from {self._connection_url}: {e}")
+            # TODO Add reference to connection_url.
+            # if self._connection_url:
+            #     try:
+            #         self._socket.disconnect(self._connection_url)
+            #     except Exception as e:
+            #         _log.debug(f"Error disconnecting from {self._connection_url}: {e}")
             
             self._socket.close(linger)
             self._socket = None
