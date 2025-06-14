@@ -63,7 +63,6 @@ import zmq as _zmq
 import zmq.green as zmq
 from gevent.local import local
 
-from volttron.utils import get_logger
 
 from volttron.client.known_identities import PLATFORM
 # from volttron.client.vip.agent.core import Core
@@ -81,7 +80,7 @@ from volttron.messagebus.zmq.zmq_connection import ZmqConnection
 from volttron.messagebus.zmq.zmq_core import ZmqCore
 from volttron.client.known_identities import PLATFORM
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 # TOP level zmq context for the router is here.
 zmq_context: zmq.Context = zmq.Context()

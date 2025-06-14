@@ -34,9 +34,8 @@ from volttron.messagebus.zmq.serialize_frames import (deserialize_frames, serial
 from zmq import green as zmq
 from zmq.green import ENOTSOCK, ZMQError
 
-from volttron.messagebus.zmq import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 if cc.is_rabbitmq_available():
     import pika

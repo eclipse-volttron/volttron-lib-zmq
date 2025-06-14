@@ -30,9 +30,8 @@ import uuid
 import zmq
 from zmq import NOBLOCK, ZMQError
 
-from volttron.utils import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 from volttron.client.known_identities import CONTROL
 from volttron.messagebus.zmq.monitor import  Monitor
 from volttron.server.server_options import ServerOptions
@@ -42,7 +41,6 @@ from volttron.types.peer import ServicePeerNotifier
 from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
 from volttron.messagebus.zmq.keystore import encode_key, decode_key
 from volttron.utils import jsonapi
-from volttron.server.logs import FramesFormatter
 from volttron.messagebus.zmq.socket import Address
 
 
@@ -50,6 +48,20 @@ from volttron.server.containers import service_repo
 from volttron.messagebus.zmq.routing import (ExternalRPCService, PubSubService, RoutingService)
 from volttron.client.known_identities import PLATFORM
 from .base_router import ERROR, INCOMING, UNROUTABLE, BaseRouter
+
+
+class FramesFormatter(object):
+
+    def __init__(self, frames):
+        self.frames = frames
+
+    def __repr__(self):
+        output = ''
+        for f in self.frames:
+            output += str(f)
+        return output
+
+    __str__ = __repr__
 
 
 class Router(BaseRouter):
@@ -100,7 +112,7 @@ class Router(BaseRouter):
 
         # self._secretkey = decode_key(secretkey)
         # self._publickey = decode_key(publickey)
-        self.logger = get_logger()
+        self.logger = _log
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.WARNING)
 

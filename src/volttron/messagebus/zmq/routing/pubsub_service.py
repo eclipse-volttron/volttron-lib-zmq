@@ -52,15 +52,14 @@ _ROUTE_ERRORS = {
     for errnum in [zmq.EHOSTUNREACH, zmq.EAGAIN]
 }
 
-from volttron.messagebus.zmq import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 
 class PubSubService:
 
     def __init__(self, socket, auth_service: AuthService, routing_service, *args, **kwargs):
-        self._logger = get_logger()
+        self._logger = logging.getLogger(__name__)
 
         def platform_subscriptions():
             return defaultdict(subscriptions)

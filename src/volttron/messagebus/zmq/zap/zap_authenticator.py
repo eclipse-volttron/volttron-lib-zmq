@@ -17,9 +17,8 @@ from volttron.decorators import service
 
 from .credentials_creator import encode_key
 
-from volttron.utils import get_logger
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 _dump_re = re.compile(r"([,\\])")
 _load_re = re.compile(r"\\(.)|,")

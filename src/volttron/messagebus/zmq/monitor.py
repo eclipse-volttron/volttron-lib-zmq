@@ -26,7 +26,6 @@ import struct
 import threading
 
 import zmq
-from volttron.utils import get_logger
 
 
 class Monitor(threading.Thread):
@@ -36,7 +35,7 @@ class Monitor(threading.Thread):
         super(Monitor, self).__init__()
         self.daemon = True
         self.sock = sock
-        self._log = get_logger()
+        self._log = logging.getLogger(__name__)
 
     def run(self):
         events = {

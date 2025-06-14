@@ -46,10 +46,10 @@ from zmq.utils.monitor import recv_monitor_message
 
 from .green import Socket as GreenSocket
 
-from volttron.utils import get_logger
+
 from .serialize_frames import deserialize_frames
 
-_log = get_logger()
+_log = logging.getLogger(__name__)
 
 @dataclass
 class ZmqConnectionContext:
