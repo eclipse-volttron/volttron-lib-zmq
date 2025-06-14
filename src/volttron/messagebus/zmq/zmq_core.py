@@ -106,8 +106,6 @@ class ZmqCore(Core):
             identity = str(uuid.uuid4())
         elif credentials:
             identity = credentials.identity
-        # address = "inproc://vip"
-        # _log.error(f"ADDRESS hard coded to {address}")
         builder = __connection_builders__.get(address)
         if not builder:
             builder = ZmqConnectionBuilder(address=address)

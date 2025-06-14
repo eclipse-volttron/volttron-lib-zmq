@@ -51,15 +51,21 @@ import logging
 import threading
 
 import zmq.green as zmq
-from volttron.messagebus.zmq.router import Router
-from volttron.messagebus.zmq.zmq_connection import ZmqConnection
-from volttron.messagebus.zmq.zmq_core import ZmqCore
-# from volttron.client.vip.agent.core import Core
-from volttron.server.decorators import service
-from volttron.server.server_options import ServerOptions
+import gevent
+from gevent.local import local
+
 from volttron.types import Message, MessageBus, MessageBusStopHandler
 from volttron.types.auth import AuthService
 from volttron.types.peer import ServicePeerNotifier
+from volttron.server.containers import service_repo
+from volttron.server.decorators import service
+from volttron.server.server_options import ServerOptions
+from volttron.client.known_identities import PLATFORM
+
+from volttron.messagebus.zmq.router import Router
+from volttron.messagebus.zmq.zmq_connection import ZmqConnection
+from volttron.messagebus.zmq.zmq_core import ZmqCore
+from volttron.messagebus.zmq.federation import ZmqFederationBridge
 
 _log = logging.getLogger(__name__)
 
@@ -73,7 +79,8 @@ def zmq_router(server_options: ServerOptions,
                auth_service: AuthService = None,
                notifier: ServicePeerNotifier = None,
                stop_handler: MessageBusStopHandler = None,
-               zmq_context: zmq.Context = None):
+               zmq_context: zmq.Context = None,
+               message_bus: ZmqMessageBus | None = None):
                # , notifier, tracker, protected_topics,
                # external_address_file, stop):
     try:
@@ -90,6 +97,8 @@ def zmq_router(server_options: ServerOptions,
             service_notifier=notifier,
             stop_handler=stop_handler,
             zmq_context=zmq_context
+            # ,
+            # message_bus=message_bus
             #local_address=server_options.local_address,
             #addresses=server_options.address,
             #default_user_id="vip.service",
@@ -153,6 +162,12 @@ class ZmqMessageBus(MessageBus):
         self._startup_error = None
         self._startup_event = threading.Event()
         self._shutdown_event = threading.Event()
+        self._federation_bridge: FederationBridge | None = None
+
+        # Add a thread-safe command queue for router operations
+        self._router_cmd_queue = gevent.queue.Queue()
+        self._cmd_results = {}
+        
 
     def start(self):
         """Start the ZMQ message bus"""
@@ -190,10 +205,11 @@ class ZmqMessageBus(MessageBus):
                     self.set_stop_handler(ThreadStopHandler(self._shutdown_event))
                 
                 zmq_router(
-                    self._server_options,
-                    self._auth_service,
-                    self._notifier,
-                    self.get_stop_handler()
+                    server_options=self._server_options,
+                    auth_service=self._auth_service,
+                    notifier=self._notifier,
+                    stop_handler=self.get_stop_handler(),
+                    message_bus=self
                 )
             except Exception as e:
                 _log.error(f"Router thread failed: {e}")
@@ -211,20 +227,90 @@ class ZmqMessageBus(MessageBus):
         
         _log.debug("ZMQ message bus thread started")
 
-    def create_federation_bridge(self) -> FederationBridge:
+    def create_federation_bridge(self) -> Optional[FederationBridge]:
         """
-        Create a ZMQ-specific federation bridge
+        Create a federation bridge for this message bus
         
-        :return: Federation bridge implementation
+        :return: A ZmqFederationBridge instance or None if federation is disabled
         """
-        router = self._get_router_instance()
-        if not router:
-            raise ValueError("Router instance is not available. Cannot create federation bridge.")
-        return ZmqFederationBridge(
-            router=router,
-            auth_service=self._auth_service
-        )
+        if not self._server_options.enable_federation:
+            return None
+            
+        if self._federation_bridge is None:
+            self._federation_bridge = ZmqFederationBridge(self)
+            
+        return self._federation_bridge
 
+    def execute_in_router_thread(self, operation):
+        """
+        Execute an operation safely in the router's thread
+        
+        :param operation: A callable to execute in the router thread
+        :return: The result of the operation
+        :raises: ValueError if router is not running
+        :raises: TimeoutError if operation times out
+        """
+        if not self.is_running():
+            raise ValueError("Router is not running")
+            
+        # Generate a unique ID for this command
+        cmd_id = str(uuid.uuid4())
+        
+        # Create an event to signal when the command completes
+        event = threading.Event()
+        
+        # Store in command results dict
+        self._cmd_results[cmd_id] = {
+            "event": event,
+            "result": None,
+            "error": None
+        }
+        
+        # Queue the command
+        self._router_cmd_queue.put({
+            "id": cmd_id,
+            "operation": operation
+        })
+        
+        # Wait for the command to complete (with timeout)
+        if not event.wait(timeout=10.0):
+            del self._cmd_results[cmd_id]
+            raise TimeoutError("Router operation timed out")
+            
+        # Get the result
+        result_info = self._cmd_results.pop(cmd_id)
+        
+        if result_info["error"] is not None:
+            raise result_info["error"]
+            
+        return result_info["result"]
+        
+    def process_router_commands(self):
+        """
+        Process commands in the router command queue
+        This method should be called periodically by the router
+        """
+        while not self._router_cmd_queue.empty():
+            try:
+                cmd = self._router_cmd_queue.get_nowait()
+                cmd_id = cmd["id"]
+                operation = cmd["operation"]
+                
+                try:
+                    # Execute the operation
+                    result = operation()
+                    
+                    # Store the result
+                    if cmd_id in self._cmd_results:
+                        self._cmd_results[cmd_id]["result"] = result
+                        self._cmd_results[cmd_id]["event"].set()
+                except Exception as e:
+                    # Store the error
+                    if cmd_id in self._cmd_results:
+                        self._cmd_results[cmd_id]["error"] = e
+                        self._cmd_results[cmd_id]["event"].set()
+            except gevent.queue.Empty:
+                break
 
 
     def _get_router_instance(self) -> Router:
@@ -262,12 +348,24 @@ class ZmqMessageBus(MessageBus):
         return self._startup_error
 
     def stop(self):
-        """Stop the ZMQ message bus"""
+        """Stop the ZMQ message bus gracefully"""
         _log.debug("Stopping ZMQ message bus")
         
         if not self.is_running():
             _log.debug("Message bus not running, nothing to stop")
             return
+        
+        # First, terminate any federation connections if they exist
+        if self._federation_bridge:
+            try:
+                # Get all connected platforms
+                for platform_id in list(self._federation_bridge.get_status().keys()):
+                    try:
+                        self._federation_bridge.disconnect(platform_id)
+                    except Exception as e:
+                        _log.warning(f"Error disconnecting from platform {platform_id}: {e}")
+            except Exception as e:
+                _log.warning(f"Error cleaning up federation bridge: {e}")
         
         # Signal shutdown
         if self.get_stop_handler() is not None:

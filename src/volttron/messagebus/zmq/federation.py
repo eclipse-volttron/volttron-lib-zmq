@@ -8,19 +8,56 @@ from volttron.messagebus.zmq.router import Router
 _log = logging.getLogger(__name__)
 
 class ZmqFederationBridge(FederationBridge):
-    """ZeroMQ implementation of platform federation using the Router"""
+    """
+    ZMQ implementation of the Federation Bridge interface.
+    Handles connections between distributed VOLTTRON instances.
+    """
     
-    def __init__(self, router: Router, auth_service):
+    def __init__(self, zmq_message_bus):
         """
-        Initialize the ZMQ federation bridge
+        Initialize the ZMQ Federation Bridge
         
-        :param router: ZMQ router instance
-        :param auth_service: Authentication service
+        :param zmq_message_bus: Reference to the ZmqMessageBus instance
         """
-        self._router = router
-        self._auth_service = auth_service
-        self._connected_platforms = {}
+        self._message_bus = zmq_message_bus
+        self._connected_platforms = {}  # Store platform connection info
     
+    # def connect(self, platform_id: str, platform_address: str, credentials: Any) -> bool:
+    #     """
+    #     Connect to a remote platform
+        
+    #     :param platform_id: ID of the remote platform
+    #     :param platform_address: Address of the remote platform
+    #     :param credentials: Public key credential for the remote platform
+    #     :return: True if connection was successful
+    #     """
+    #     try:
+    #         # Get auth service from message bus
+    #         auth_service = self._message_bus.auth
+    #         auth_service.add_federation_platform(platform_id, credentials)
+            
+    #         # Store connection info
+    #         self._connected_platforms[platform_id] = {
+    #             "address": platform_address,
+    #             "credentials": credentials,
+    #             "connected": True
+    #         }
+            
+    #         # Execute in the router's thread for thread safety
+    #         self._message_bus.execute_in_router_thread(
+    #             lambda: self._message_bus.router.connect_remote_platform(
+    #                 platform_id=platform_id, 
+    #                 address=platform_address
+    #             )
+    #         )
+            
+    #         _log.info(f"Connected to federated platform: {platform_id}")
+    #         return True
+            
+    #     except Exception as e:
+    #         _log.error(f"Error connecting to federated platform {platform_id}: {e}")
+    #         return False
+
     def connect(self, platform_id: str, platform_address: str, credentials: Any) -> bool:
         """
         Connect to a remote platform
@@ -31,48 +68,84 @@ class ZmqFederationBridge(FederationBridge):
         :return: True if connection was successful
         """
         try:
-            # First, register the platform with the auth service
-            self._auth_service.add_federation_platform(platform_id, credentials)
+            _log.info(f"Connecting to federation platform {platform_id} at {platform_address}")
             
-            # Create instance config for the router's routing service
-            instance_config = {
-                "instance-name": platform_id,
-                "serverkey": credentials,  # This is the public key
-                "vip-address": platform_address
-            }
-            
-            # Use the router's routing service to connect to the platform
-            routing_service = self._router.routing_service
-            
-            # Build connection using normalmode_platform_connection
-            # We'll use the existing handle_subsystem method, but we need to create
-            # frames that match what the method expects
-            frames = [
-                b"", b"", b"VIP1", b"", b"", b"routing_table", b"normalmode_platform_connection", 
-                instance_config
-            ]
-            routing_service.handle_subsystem(frames)
+            # Register with auth service
+            if not self._message_bus._auth_service.add_federation_platform(platform_id, credentials):
+                _log.error(f"Auth service rejected federation platform {platform_id}")
+                return False
+                
+            _log.debug(f"Auth service accepted federation platform {platform_id}")
             
             # Store connection info
             self._connected_platforms[platform_id] = {
                 "address": platform_address,
                 "credentials": credentials,
-                "connected_at": time.time(),
+                "connected": False,  # Will be set to True if connection succeeds
                 "last_heartbeat": time.time()
             }
             
-            _log.info(f"Connected to platform: {platform_id} at {platform_address}")
-            return True
-            
-        except Exception as e:
-            _log.error(f"Error connecting to platform {platform_id}: {e}")
-            
-            # Clean up auth service registration if connection failed
             try:
-                self._auth_service.remove_federation_platform(platform_id)
-            except:
-                pass
+                # Execute router operation safely in the router thread
+                connection_result = self._message_bus.execute_in_router_thread(
+                    lambda: self._connect_to_platform(platform_id, platform_address)
+                )
                 
+                if connection_result:
+                    _log.info(f"Successfully connected to federated platform: {platform_id}")
+                    self._connected_platforms[platform_id]["connected"] = True
+                    return True
+                else:
+                    _log.error(f"Router rejected connection to platform {platform_id}")
+                    return False
+                    
+            except Exception as e:
+                _log.error(f"Error in router thread while connecting to platform {platform_id}: {e}", 
+                        exc_info=True)
+                return False
+                
+        except Exception as e:
+            _log.error(f"Error connecting to federated platform {platform_id}: {e}", 
+                    exc_info=True)
+            return False
+        
+    def _connect_to_platform(self, platform_id: str, platform_address: str) -> bool:
+        """Helper method to connect to a platform via the router"""
+        # This method runs in the router thread
+        try:
+            _log.debug(f"Executing router connect operation for platform {platform_id}")
+            
+            # Check if router is available
+            if not hasattr(self._message_bus, "_router_instance") or self._message_bus._router_instance is None:
+                _log.error("Router instance not available")
+                return False
+                
+            # Get the router instance
+            router = self._message_bus._router_instance
+            
+            # Connect to remote platform
+            # Note: Need to check the actual method name and parameters in your router implementation
+            if hasattr(router, "connect_remote_platform"):
+                result = router.connect_remote_platform(
+                    platform_id=platform_id,
+                    address=platform_address
+                )
+                _log.debug(f"Router connect_remote_platform result: {result}")
+                return bool(result)
+            elif hasattr(router.routing_service, "connect_remote_platform"):
+                result = router.routing_service.connect_remote_platform(
+                    platform_id=platform_id,
+                    address=platform_address
+                )
+                _log.debug(f"Router routing_service.connect_remote_platform result: {result}")
+                return bool(result)
+            else:
+                _log.error("Router doesn't have connect_remote_platform method")
+                return False
+                
+        except Exception as e:
+            _log.error(f"Error connecting to platform {platform_id} in router thread: {e}", 
+                    exc_info=True)
             return False
     
     def disconnect(self, platform_id: str) -> bool:
@@ -83,66 +156,39 @@ class ZmqFederationBridge(FederationBridge):
         :return: True if disconnection was successful
         """
         try:
-            # Get the routing service
-            routing_service = self._router.routing_service
-            
-            # Disconnect the platform
-            routing_service.disconnect_external_instances(platform_id)
-            
-            # Remove from auth service
-            self._auth_service.remove_federation_platform(platform_id)
-            
-            # Remove from connected platforms
             if platform_id in self._connected_platforms:
-                del self._connected_platforms[platform_id]
+                # Execute in the router's thread for thread safety
+                self._message_bus.execute_in_router_thread(
+                    lambda: self._message_bus.router.routing_service.disconnect_remote_platform(platform_id)
+                )
                 
-            _log.info(f"Disconnected from platform: {platform_id}")
-            return True
+                # Update connection info
+                self._connected_platforms[platform_id]["connected"] = False
+                _log.info(f"Disconnected from federated platform: {platform_id}")
+                return True
+                
+            _log.warning(f"Cannot disconnect: Platform {platform_id} not found")
+            return False
             
         except Exception as e:
             _log.error(f"Error disconnecting from platform {platform_id}: {e}")
             return False
     
-    def get_status(self, platform_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_status(self, platform_id: Optional[str] = None) -> Dict[str, Dict]:
         """
-        Get status of federation connections
+        Get status of connected platforms
         
-        :param platform_id: Optional ID to get status for a specific platform
-        :return: Dictionary with status information
+        :param platform_id: Optional ID of a specific platform to get status for
+        :return: Dict containing status information for requested platform(s)
         """
-        # Get the routing service
-        routing_service = self._router.routing_service
-        
-        # Get connected platforms from routing service
-        connected_platforms = routing_service.get_connected_platforms()
-        
-        if platform_id:
-            # Return status for specific platform
+        if platform_id is not None:
+            # Return status for specific platform if it exists
             if platform_id in self._connected_platforms:
-                status = dict(self._connected_platforms[platform_id])
-                status['is_connected'] = platform_id in connected_platforms
-                
-                # Don't return sensitive information
-                if 'credentials' in status:
-                    status['credentials'] = "***"
-                    
-                return status
-            else:
-                return {"error": f"Platform {platform_id} not found"}
-        else:
-            # Return status for all platforms
-            result = {}
-            for platform_id, info in self._connected_platforms.items():
-                platform_status = dict(info)
-                platform_status['is_connected'] = platform_id in connected_platforms
-                
-                # Don't return sensitive information
-                if 'credentials' in platform_status:
-                    platform_status['credentials'] = "***"
-                    
-                result[platform_id] = platform_status
-                
-            return result
+                return {platform_id: self._connected_platforms[platform_id]}
+            return {}  # Platform not found
+        
+        # Return status for all platforms
+        return self._connected_platforms
     
     def ping(self, platform_id: str, timeout: int = 5) -> bool:
         """
@@ -152,18 +198,35 @@ class ZmqFederationBridge(FederationBridge):
         :param timeout: Timeout in seconds
         :return: True if ping was successful
         """
+        try:
+            # Execute in the router's thread for thread safety
+            is_connected = self._message_bus.execute_in_router_thread(
+                lambda: self._check_platform_connection(platform_id)
+            )
+            
+            if is_connected and platform_id in self._connected_platforms:
+                # Update last heartbeat time
+                self._connected_platforms[platform_id]['last_heartbeat'] = time.time()
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            _log.error(f"Error pinging platform {platform_id}: {e}")
+            return False
+            
+    def _check_platform_connection(self, platform_id: str) -> bool:
+        """
+        Helper method to check if a platform is connected
+        
+        :param platform_id: ID of the remote platform
+        :return: True if platform is connected
+        """
         # Get the routing service
-        routing_service = self._router.routing_service
+        routing_service = self._message_bus.router.routing_service
         
         # Get connected platforms from routing service
         connected_platforms = routing_service.get_connected_platforms()
         
         # Check if platform is connected
-        is_connected = platform_id in connected_platforms
-        
-        if is_connected and platform_id in self._connected_platforms:
-            # Update last heartbeat time
-            self._connected_platforms[platform_id]['last_heartbeat'] = time.time()
-            return True
-        else:
-            return False
+        return platform_id in connected_platforms

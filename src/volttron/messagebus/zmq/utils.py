@@ -1,5 +1,6 @@
 from __future__ import annotations
 import zmq.green as zmq
+import hashlib
 import logging
 from contextlib import contextmanager
 from typing import Generator, Optional, TYPE_CHECKING
@@ -72,3 +73,38 @@ def get_available_port() -> int:
     with socket.socket() as sock:
         sock.bind(('', 0))
         return sock.getsockname()[1]
+    
+def get_vip_inproc_address(volttron_home: Path = None, instance_name: str = None) -> str:
+    """
+    Generate a unique inproc address for VIP communication
+    
+    :param volttron_home: VOLTTRON_HOME directory, used to ensure uniqueness
+    :param instance_name: Instance name, used to ensure uniqueness
+    :return: Unique inproc address
+    """
+    if volttron_home is None:
+        volttron_home = os.environ.get('VOLTTRON_HOME', '/tmp/volttron_home')
+        if not isinstance(volttron_home, Path):
+            volttron_home = Path(volttron_home)
+    
+    if instance_name is None:
+        # Try to get from environment, default to a hash of volttron_home
+        instance_name = os.environ.get('VOLTTRON_INSTANCE', '')
+        if not instance_name:
+            instance_name = hashlib.md5(str(volttron_home).encode()).hexdigest()[:8]
+    
+    # Create a unique identifier based on volttron_home and instance_name
+    unique_id = hashlib.md5(f"{volttron_home}:{instance_name}".encode()).hexdigest()[:8]
+    
+    # Build the address
+    address = f"inproc://vip-{unique_id}"
+    
+    # Ensure the run directory exists
+    run_dir = volttron_home / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save to file for other processes
+    address_file = run_dir / "vip_inproc_address"
+    address_file.write_text(address)
+    
+    return address
