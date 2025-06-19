@@ -125,11 +125,10 @@ class ZmqMessageBusConfig(MessageBusConfig):
         federation_url = options_dict.pop('federation_url')
 
         if enable_federation:
-            assert 'federation_url' in options_dict, "Federation enabled, but missing federation_uri"    
             if not federation_url:
-                raise ValueError("federation_uri was ''")
+                raise ValueError("enable_federation flag set, but federation_uri was ''")
             defaults['messagebus_config']['enable_federation'] = enable_federation
-            defaults['messagebus_config']['federation_url'] = federation_uri
+            defaults['messagebus_config']['federation_url'] = federation_url
 
         merged_options = {**defaults, **options_dict}
         

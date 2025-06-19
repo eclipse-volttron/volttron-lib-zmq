@@ -152,6 +152,7 @@ class ZmqMessageBus(MessageBus):
         #self._external_address_file = external_address_file
         #self._stop = stop
         self._thread = None
+        self._federation_bridge: FederationBridge | None = None
 
     def start(self):
         import os
