@@ -58,7 +58,7 @@ _log = logging.getLogger(__name__)
 
 class PubSubService:
 
-    def __init__(self, socket, auth_service: AuthService, routing_service, *args, **kwargs):
+    def __init__(self, socket, auth_service: AuthService | None, routing_service, *args, **kwargs):
         self._logger = logging.getLogger(__name__)
 
         def platform_subscriptions():
@@ -77,8 +77,7 @@ class PubSubService:
         if self._ext_router is not None:
             self._ext_router.register("on_connect", self.external_platform_add)
             self._ext_router.register("on_disconnect", self.external_platform_drop)
-        self._rabbitmq_agent = None
-
+        
     def _add_peer_subscription(self, peer, bus, prefix, platform="internal"):
         """
         This maintains subscriptions for specified peer (subscriber), bus and prefix.
@@ -300,8 +299,7 @@ class PubSubService:
             except ValueError:
                 self._logger.error("JSON decode error. Invalid character")
                 return 0
-            if self._rabbitmq_agent:
-                self._publish_on_rmq_bus(frames)
+            
             return self._distribute(frames, user_id)
 
     def _peer_list(self, frames):
@@ -807,10 +805,6 @@ class PubSubService:
                     self._logger.debug(
                         "PUBSUBSERVICE New external list from {0}: List: {1}".format(
                             instance_name, self._ext_subscriptions))
-                    if self._rabbitmq_agent:
-                        for prefix in prefixes:
-                            self._rabbitmq_agent.vip.pubsub.subscribe(
-                                "pubsub", prefix, self.publish_callback)
             except KeyError as exc:
                 self._logger.error("Unknown external instance name: {}".format(instance_name))
                 return False
@@ -865,10 +859,7 @@ class PubSubService:
             # Make it an internal publish
             frames[6] = "publish"
             subscribers_count = 1
-            if self._rabbitmq_agent:
-                self._publish_on_rmq_bus(frames)
-            else:
-                subscribers_count = self._distribute_internal(frames)
+            subscribers_count = self._distribute_internal(frames)
             # There are no subscribers, send error message back to source platform
             if not subscribers_count:
                 try:
@@ -917,30 +908,6 @@ class PubSubService:
         # Send it through ZMQ bus
         self._distribute(frames, "")
         self._logger.debug("Publish callback {}".format(topic))
-
-    def _publish_on_rmq_bus(self, frames: list):
-        """
-        Publish the message on RabbitMQ message bus.
-        :param frames: ZMQ message frames
-        :return:
-        """
-        publisher = frames[0]
-        topic = frames[7]
-
-        try:
-            msg = frames[8]
-            bus = msg["bus"]
-        except KeyError as exc:
-            self._logger.error("Missing key in _peer_publish message {}".format(exc))
-        except ValueError:
-            self._logger.error("JSON decode error. Invalid character")
-        if self._rabbitmq_agent:
-            self._rabbitmq_agent.vip.pubsub.publish("pubsub",
-                                                    topic,
-                                                    msg["headers"],
-                                                    msg["message"],
-                                                    bus=bus)
-
 
 class ProtectedPubSubTopics(object):
     """Simple class to contain protected pubsub topics"""

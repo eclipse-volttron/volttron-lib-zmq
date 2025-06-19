@@ -25,6 +25,7 @@
 import os
 from symtable import Class
 
+from volttron.types.auth.auth_credentials import VolttronCredentials
 import zmq
 import logging
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
@@ -202,7 +203,7 @@ class RoutingService(object):
         if not self._web_addresses:
             _log.debug("MULTI_PLATFORM SETUP MODE COMPLETED")
 
-    def _build_connection(self, instance_info):
+    def _build_connection(self, instance_info, our_credentials: VolttronCredentials):
         """
         Build connection with remote instance and send initial "hello" message.
         :param _instance_name: name of remote instance
@@ -229,6 +230,7 @@ class RoutingService(object):
         sock.tcp_keepalive_intvl = 20
         sock.tcp_keepalive_cnt = 6
 
+        # TODO Does the socket identity need to coorelate to the instance name or not?
         num = random.random()
         sock.identity = f"instance.{instance_name}.{num}".encode("utf-8")
         sock.zap_domain = b"vip"
@@ -252,10 +254,9 @@ class RoutingService(object):
 
         self._routing_table[instance_name] = [instance_name]
 
-        keystore = KeyStore()
         sock = self._instances[instance_name]["socket"]
 
-        vip_address = f"{address}?serverkey={serverkey}&publickey={keystore.public}&secretkey={keystore.secret}"
+        vip_address = f"{address}?serverkey={serverkey}&publickey={our_credentials.publickey}&secretkey={our_credentials.secretkey}"
 
         ext_platform_address = Address(vip_address)
         ext_platform_address.identity = sock.identity
@@ -474,3 +475,135 @@ class RoutingService(object):
         """
         for name in self._instances:
             self.disconnect_external_instances(name)
+
+    def add_external_route(self, platform_id: str, address: str, public_key: str, our_credentials: VolttronCredentials) -> bool:
+        """
+        Add an external route for federation
+        :param platform_id: Unique identifier for the external platform
+        :param address: VIP address of the external platform
+        :param public_key: Public key for authentication
+        :return: True if connection was successfully initiated
+        """
+        try:
+            # Check if platform already exists
+            if platform_id in self._instances:
+                _log.warning(f"Platform {platform_id} already exists, skipping add")
+                return False
+                
+            # Create instance_info in the format expected by _build_connection
+            instance_info = {
+                'instance-name': platform_id,
+                'serverkey': public_key,
+                'vip-address': address
+            }
+            
+            # Use existing _build_connection method
+            self._build_connection(instance_info, our_credentials=our_credentials)
+            
+            _log.info(f"External route added for platform: {platform_id}")
+            return True
+            
+        except Exception as e:
+            _log.error(f"Failed to add external route for {platform_id}: {e}")
+            return False
+    
+    def remove_external_route(self, platform_id: str) -> bool:
+        """
+        Remove an external route for federation
+        :param platform_id: Unique identifier for the external platform
+        :return: True if connection was successfully removed
+        """
+        try:
+            if platform_id not in self._instances:
+                _log.warning(f"Platform {platform_id} not found, nothing to remove")
+                return False
+                
+            # Disconnect the external instance
+            self.disconnect_external_instances(platform_id)
+            
+            # Clean up routing table entry
+            if platform_id in self._routing_table:
+                del self._routing_table[platform_id]
+                
+            # Remove from instances tracking
+            if platform_id in self._instances:
+                instance_info = self._instances[platform_id]
+                
+                # Unregister sockets from poller
+                if 'socket' in instance_info:
+                    sock = instance_info['socket']
+                    if sock in self._vip_sockets:
+                        self._poller.unregister(sock)
+                        self._vip_sockets.remove(sock)
+                        sock.close()
+                        
+                if 'monitor_socket' in instance_info:
+                    mon_sock = instance_info['monitor_socket']
+                    if mon_sock in self._monitor_sockets:
+                        self._poller.unregister(mon_sock)
+                        self._monitor_sockets.remove(mon_sock)
+                        mon_sock.close()
+                
+                # Clean up identity mapping
+                platform_identity = instance_info.get('platform_identity')
+                if platform_identity in self._socket_identities:
+                    del self._socket_identities[platform_identity]
+                    
+                del self._instances[platform_id]
+            
+            _log.info(f"External route removed for platform: {platform_id}")
+            return True
+            
+        except Exception as e:
+            _log.error(f"Failed to remove external route for {platform_id}: {e}")
+            return False
+    
+    def refresh_external_route(self, platform_id: str, address: str, public_key: str) -> bool:
+        """
+        Refresh an external route (remove and re-add)
+        :param platform_id: Unique identifier for the external platform
+        :param address: VIP address of the external platform  
+        :param public_key: Public key for authentication
+        :return: True if connection was successfully refreshed
+        """
+        self.remove_external_route(platform_id)
+        return self.add_external_route(platform_id, address, public_key)
+    
+    def get_external_route_status(self, platform_id: str) -> str | None:
+        """
+        Get the status of an external route
+        :param platform_id: Unique identifier for the external platform
+        :return: Status string or None if platform not found
+        """
+        if platform_id in self._instances:
+            return self._instances[platform_id].get('status')
+        return None
+    
+    def shutdown(self):
+        """
+        Shutdown the routing service and cleanup all connections
+        """
+        try:
+            # Close all external connections
+            self.close_external_connections()
+            
+            # Close all monitor sockets
+            for mon_sock in list(self._monitor_sockets):
+                try:
+                    self._poller.unregister(mon_sock)
+                    mon_sock.close()
+                except Exception as e:
+                    _log.error(f"Error closing monitor socket: {e}")
+            
+            # Close all VIP sockets  
+            for sock in list(self._vip_sockets):
+                try:
+                    self._poller.unregister(sock)
+                    sock.close()
+                except Exception as e:
+                    _log.error(f"Error closing VIP socket: {e}")
+                    
+            _log.info("RoutingService shutdown complete")
+            
+        except Exception as e:
+            _log.error(f"Error during RoutingService shutdown: {e}")
