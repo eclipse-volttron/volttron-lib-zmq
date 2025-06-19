@@ -49,7 +49,11 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import Optional
 
+from volttron.messagebus.zmq.config import ZmqMessageBusConfig
+from volttron.messagebus.zmq.federation_bridge import ZmqFederationBridge
+from volttron.types.federation import FederationBridge
 import zmq.green as zmq
 from volttron.messagebus.zmq.router import Router
 from volttron.messagebus.zmq.zmq_connection import ZmqConnection
@@ -139,6 +143,7 @@ class ZmqMessageBus(MessageBus):
         #     self._secretkey = creds.secretkey
 
         self._server_options = server_options
+        self._config = self._server_options.get_messagebus_config()
         self._auth_service = auth_service
         #self._opts = opts
         self._notifier = notifier
@@ -174,6 +179,26 @@ class ZmqMessageBus(MessageBus):
     def stop(self):
         if self._stop_handler is not None:
             self._stop_handler.message_bus_shutdown()
+    
+    def create_federation_bridge(self) -> Optional[FederationBridge]:
+        """
+        Create a federation bridge for this message bus.
+        
+        :return: A ZmqFederationBridge instance or None if federation is disabled
+        :rtype: Optional[FederationBridge]
+        """
+        if not self._config:
+            return None
+            
+        # Check if federation is enabled in config
+        messagebus_config = getattr(self._config, 'messagebus_config', {})
+        if not messagebus_config.get("enable_federation", False):
+            return None
+            
+        if self._federation_bridge is None:
+            self._federation_bridge = ZmqFederationBridge(self)
+            
+        return self._federation_bridge
 
     def send_vip_message(self, message: Message):
         ...
@@ -181,5 +206,38 @@ class ZmqMessageBus(MessageBus):
     def receive_vip_message(self) -> Message:
         ...
 
+def register_zmq_messagebus():
+    """Register ZMQ messagebus with the global registry"""
+    import json
+    import os
+    from pathlib import Path
+    
+    # Determine registry path
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        registry_dir = Path(xdg_config) / "volttron"
+    else:
+        registry_dir = Path.home() / ".local" / "share" / "volttron"
+    
+    registry_dir.mkdir(parents=True, exist_ok=True)
+    registry_file = registry_dir / "messagebus_registry.json"
+    
+    # Load existing registry or create new
+    registry_data = {}
+    if registry_file.exists():
+        try:
+            with open(registry_file) as f:
+                registry_data = json.load(f)
+        except Exception:
+            pass  # Start fresh if corrupted
+    
+    # Register Zmq messagebus
+    registry_data["zmq"] = ".".join([ZmqMessageBusConfig.__module__, ZmqMessageBusConfig.__name__])
+    
+    # Write updated registry
+    with open(registry_file, 'w') as f:
+        json.dump(registry_data, f, indent=2)
+
+register_zmq_messagebus()
 
 __all__: list[str] = ['ZmqConnection', 'ZmqCore']
