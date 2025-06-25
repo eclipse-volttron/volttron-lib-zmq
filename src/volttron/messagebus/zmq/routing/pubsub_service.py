@@ -77,6 +77,8 @@ class PubSubService:
         if self._ext_router is not None:
             self._ext_router.register("on_connect", self.external_platform_add)
             self._ext_router.register("on_disconnect", self.external_platform_drop)
+        else:
+            _log.error("Routing Service is None!")
         
     def _add_peer_subscription(self, peer, bus, prefix, platform="internal"):
         """
@@ -179,6 +181,7 @@ class PubSubService:
         :param frames list of frames
         :type frames list
         """
+        _log.debug(f"_peer_subscribe: {frames}")
         if len(frames) < 8:
             return False
         else:
@@ -211,7 +214,8 @@ class PubSubService:
                     return False
                 self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
-            # self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
+            self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
+            self._logger.debug(f"Is ext_router a thing? {self._ext_router}")
             if is_all and self._ext_router is not None:
                 # Send subscription message to all connected platforms
                 external_platforms = self._ext_router.get_connected_platforms()
@@ -665,7 +669,7 @@ class PubSubService:
         """
         response = []
         result = None
-
+    
         try:
             sender, recipient, proto, usr_id, msg_id, subsystem, op = frames[:7]
         except (

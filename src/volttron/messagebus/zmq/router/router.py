@@ -210,7 +210,7 @@ class Router(BaseRouter):
             address.bind(sock)
             _log.debug("Additional VIP router bound to %s" % address)
         
-        self.pubsub = PubSubService(self.socket, self._auth_service, None) # ._protected_topics, self._ext_routing)
+        self.pubsub = PubSubService(self.socket, self._auth_service, self._routing_service) # ._protected_topics, self._ext_routing)
         self.ext_rpc =  None # ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
         _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
@@ -354,12 +354,12 @@ class Router(BaseRouter):
                 if sockets[sock] == zmq.POLLIN:
                     frames = sock.recv_multipart(copy=False)
                     if isinstance(frames[0], zmq.Frame):
-                        self.route(deserialize_frames(frames))
-                    else:
-                        self.route(frames)
+                        frames = deserialize_frames(frames)
+                    _log.debug(f"Routing frames {frames}")
+                    self.route(frames)
             elif sock in self._routing_service._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:
-                    # _log.debug("From Ext Socket: ")
+                    _log.debug("From Ext Socket: ")
                     self.ext_route(sock)
             elif sock in self._routing_service._monitor_sockets:
                 self._routing_service.handle_monitor_event(sock)
@@ -377,8 +377,8 @@ class Router(BaseRouter):
         #   [SENDER, PROTO, USER_ID, MSG_ID, SUBSYS, ...]
         frames = socket.recv_multipart(copy=False)
         self.route(deserialize_frames(frames))
-        # for f in frames:
-        #     _log.debug("PUBSUBSERVICE Frames: {}".format(bytes(f)))
+        for f in frames:
+            _log.debug("PUBSUBSERVICE Frames: {}".format(bytes(f)))
         if len(frames) < 6:
             return
 
@@ -414,14 +414,14 @@ class Router(BaseRouter):
             if frames[1] == "VIP1":
                 recipient = ""
                 frames[:1] = ["", ""]
-                # for f in frames:
-                #     _log.debug("frames: {}".format(bytes(f)))
+                for f in frames:
+                    _log.debug("frames: {}".format(bytes(f)))
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         # Handle 'routing_table' subsystem messages
         elif name == "routing_table":
-            # for f in frames:
-            #     _log.debug("frames: {}".format(bytes(f)))
+            for f in frames:
+                _log.debug("frames: {}".format(bytes(f)))
             if frames[1] == "VIP1":
                 frames[:1] = ["", ""]
             result = self._routing_service.handle_subsystem(frames)

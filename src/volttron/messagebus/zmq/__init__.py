@@ -67,10 +67,6 @@ from volttron.types.peer import ServicePeerNotifier
 
 _log = logging.getLogger(__name__)
 
-# Add this somewhere in the ZMQ module initialization
-_log = logging.getLogger(__name__)
-_log.setLevel(logging.DEBUG)
-_log.debug("ZMQ router module initialized with debug logging enabled")
 
 # TOP level zmq context for the router is here.
 zmq_context: zmq.Context = zmq.Context()

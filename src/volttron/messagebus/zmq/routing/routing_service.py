@@ -101,6 +101,7 @@ class RoutingService(object):
         response = []
         result = False
 
+        #_log.debug(f"ROUTING SERVICE->handle_subystem frames: {frames}")
         try:
             sender, recipient, proto, usr_id, msg_id, subsystem, op = frames[:7]
         except (
@@ -381,7 +382,7 @@ class RoutingService(object):
 
         try:
             instance_info = self._instances[instance_name]
-            _log.debug(f"Instance info is: {instance_info}")
+            #_log.debug(f"send_external Instance info is: {instance_info}")
             try:
                 # Send using external socket
                 success = self._send_to_socket(instance_info["socket"], frames)
@@ -424,7 +425,7 @@ class RoutingService(object):
 
         try:
             frames = serialize_frames(frames)
-            _log.debug(f"Frames sent to external {[x.bytes for x in frames]}")
+            #_log.debug(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
             # Try sending the message to its recipient
             sock.send_multipart(frames, flags=NOBLOCK, copy=False)
         except ZMQError as exc:
@@ -433,8 +434,10 @@ class RoutingService(object):
             except KeyError:
                 success = False
                 error = None
+                #_log.error(f"{'x' * 100}Key Error")
             if exc.errno == EHOSTUNREACH or exc.errno == EAGAIN:
                 success = False
+                #_log.error(f"{'x' * 100}Unreachable host or EAGAIN")
                 raise
         return success
 
@@ -486,7 +489,7 @@ class RoutingService(object):
         """
         try:
             _log.debug(f"Routing service adding external route to {platform_id} at {address}")
-            
+
             # Check if platform already exists
             if platform_id in self._instances:
                 _log.warning(f"Platform {platform_id} already exists, skipping add")

@@ -121,14 +121,10 @@ class ZmqMessageBusConfig(MessageBusConfig):
         inproc_address = options_dict.pop('service_address')
         if inproc_address:
             defaults['inproc_address'] = inproc_address
-        enable_federation = options_dict.pop('enable_federation')
-        federation_url = options_dict.pop('federation_url')
-
-        if enable_federation:
-            if not federation_url:
-                raise ValueError("enable_federation flag set, but federation_uri was ''")
-            defaults['messagebus_config']['enable_federation'] = enable_federation
-            defaults['messagebus_config']['federation_url'] = federation_url
+    
+        # Federation url is not required, but is available for discovery if not set ahead of time.
+        defaults['messagebus_config']['enable_federation'] = options_dict.pop('enable_federation')
+        defaults['messagebus_config']['federation_url'] = options_dict.pop('federation_url')
 
         merged_options = {**defaults, **options_dict}
         
