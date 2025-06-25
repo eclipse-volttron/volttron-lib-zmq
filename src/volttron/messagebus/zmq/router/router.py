@@ -104,27 +104,6 @@ class Router(BaseRouter):
             service_notifier: ServicePeerNotifier | None = None,
             stop_handler: MessageBusStopHandler | None = None,
             zmq_context: zmq.Context | None = None
-
-            # local_address: str,
-            # addresses: list[str],
-            # default_user_id: str = None,
-            # auth_service: AuthService | None = None,
-            # auth_enabled: bool = False,
-            # context = None,
-            # service_notifier: ServicePeerNotifier | None = None
-            #
-            # addresses=(),
-            # context=None,
-            # default_user_id=None,
-            # monitor=False,
-            # tracker=None,
-            # instance_name=None,
-            # protected_topics={},
-            # external_address_file="",
-            # msgdebug=None,
-            # agent_monitor_frequency=600,
-            # service_notifier: ServicePeerNotifier | None = None,
-            # auth_enabled: bool = False
     ):
 
         super().__init__(
@@ -163,7 +142,7 @@ class Router(BaseRouter):
             socket_class=self._socket_class,
             poller=self._poller,
             my_addr=self._addr,  # Assuming _addr contains the address
-            instance_name=getattr(server_options, 'instance_name', 'default'),
+            instance_name=getattr(server_options, 'instance_name', 'default')
         )
 
         # Initialize PubSubService with routing service
@@ -188,7 +167,8 @@ class Router(BaseRouter):
         self._setup_federation_watcher()
         
         # Load initial federation config
-        self._load_initial_federation_config()
+        # We are going to wait for the server to touch the file to start loading federation.
+        #self._load_initial_federation_config()
 
     def setup(self):
 
@@ -498,8 +478,10 @@ class Router(BaseRouter):
     def _update_federation_connections(self, new_platforms_list):
         """Update federation connections based on config changes"""
         # Convert current platforms dict to set of IDs for comparison
-        current_platform_ids = set(self._federation_platforms.keys())
+        _log.info("_update_federation_connections")
         
+        current_platform_ids = set(self._federation_platforms.keys())
+                
         # Convert new platforms list to dict for easier processing
         new_platforms_dict = {platform['id']: platform for platform in new_platforms_list}
         new_platform_ids = set(new_platforms_dict.keys())

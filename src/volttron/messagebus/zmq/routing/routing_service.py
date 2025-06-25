@@ -485,6 +485,8 @@ class RoutingService(object):
         :return: True if connection was successfully initiated
         """
         try:
+            _log.debug(f"Routing service adding external route to {platform_id} at {address}")
+            
             # Check if platform already exists
             if platform_id in self._instances:
                 _log.warning(f"Platform {platform_id} already exists, skipping add")
