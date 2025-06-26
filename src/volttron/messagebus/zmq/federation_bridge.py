@@ -92,8 +92,15 @@ class ZmqFederationBridge(FederationBridge):
                 )
                 
                 if connection_result:
-                    _log.info(f"Successfully connected to federated platform: {platform_id}")
+                    # Reset subscription cache for clean slate
+                    self._message_bus.execute_in_router_thread(
+                        lambda: self._reset_platform_subscriptions(platform_id)
+                    )
+                    _log.debug(f"Reset subscription cache for platform {platform_id}")
                     self._connected_platforms[platform_id]["connected"] = True
+                    # Sync subscriptions after connection
+                    self._sync_subscriptions_with_platform(platform_id)
+
                     return True
                 else:
                     _log.error(f"Router rejected connection to platform {platform_id}")
@@ -230,3 +237,76 @@ class ZmqFederationBridge(FederationBridge):
         
         # Check if platform is connected
         return platform_id in connected_platforms
+    
+    def _reset_platform_subscriptions(self, platform_id: str):
+        """Reset the subscription cache for a platform"""
+
+        try:
+            # Get router instance
+            router = self._message_bus._router_instance
+            if hasattr(router, 'pubsub'):
+                pubsub = router.pubsub
+                if hasattr(pubsub, '_ext_subscriptions') and platform_id in pubsub._ext_subscriptions:
+                    pubsub._ext_subscriptions[platform_id] = {}
+                    _log.debug(f"Reset _ext_subscriptions for {platform_id}")
+        except Exception as e:
+            _log.error(f"Error resetting subscriptions: {e}")
+            
+    def _sync_subscriptions_with_platform(self, platform_id: str):
+        """Sync local subscriptions to remote platform"""
+        
+        _log.debug(f"Syncing subscriptions with platform {platform_id}")
+        
+        # This needs to run in the router thread to safely access pubsub
+        self._message_bus.execute_in_router_thread(
+            lambda: self._do_sync_subscriptions(platform_id)
+        )
+        
+    def _do_sync_subscriptions(self, platform_id: str):
+        """Actual subscription sync (runs in router thread)"""
+
+        try:
+            # Get router instance
+            router = self._message_bus._router_instance
+            if not hasattr(router, 'pubsub'):
+                _log.error("Router has no pubsub attribute")
+                return
+                
+            pubsub = router.pubsub
+            
+            # Get local subscriptions
+            local_subscriptions = {}
+            try:
+                # Structure depends on actual implementation
+                if hasattr(pubsub, '_my_subscriptions'):
+                    for bus, topics in pubsub._my_subscriptions.items():
+                        if bus not in local_subscriptions:
+                            local_subscriptions[bus] = []
+                        for topic in topics:
+                            local_subscriptions[bus].append(topic)
+            except Exception as e:
+                _log.error(f"Error getting local subscriptions: {e}")
+                
+            _log.debug(f"Sending subscriptions to {platform_id}: {local_subscriptions}")
+            
+            # Send subscription data to remote platform
+            # This assumes socket is available in router thread
+            frames = [
+                platform_id,
+                "",
+                "VIP1",
+                "",
+                "",
+                "pubsub",
+                "register_external_subscriptions",
+                bytes(repr(local_subscriptions), 'utf-8')
+            ]
+            
+            try:
+                router.socket.send_multipart(frames, flags=0)
+                _log.debug(f"Sent subscription sync frames to {platform_id}")
+            except Exception as e:
+                _log.error(f"Error sending subscription sync frames: {e}")
+                
+        except Exception as e:
+            _log.error(f"Error in _do_sync_subscriptions: {e}")
