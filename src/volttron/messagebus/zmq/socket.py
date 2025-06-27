@@ -487,7 +487,8 @@ class _Socket(object):
         """
 
         state = self._recv_state
-        _log.debug(f"state: {state}")
+        # This debug writes all the states of the vip protocol.
+        #_log.debug(f"state: {state}")
         if state == 1:
             _log.debug("Receiving now!")
             # Automatically receive and check PROTO frame
