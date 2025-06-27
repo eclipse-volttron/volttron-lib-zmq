@@ -78,7 +78,8 @@ def zmq_router(server_options: ServerOptions,
                auth_service: AuthService = None,
                notifier: ServicePeerNotifier = None,
                stop_handler: MessageBusStopHandler = None,
-               zmq_context: zmq.Context = None):
+               zmq_context: zmq.Context = None,
+               messsage_bus: MessageBus = None):
                # , notifier, tracker, protected_topics,
                # external_address_file, stop):
     try:
@@ -89,26 +90,15 @@ def zmq_router(server_options: ServerOptions,
         # _log.debug(f"Protected Topics: {protected_topics}")
         # _log.debug(f"External Address: {external_address_file}")
         # _log.debug(f"Stop: {stop}")
-        Router(
+        router = Router(
             server_options=server_options,
             auth_service=auth_service,
             service_notifier=notifier,
             stop_handler=stop_handler,
-            zmq_context=zmq_context
-            #local_address=server_options.local_address,
-            #addresses=server_options.address,
-            #default_user_id="vip.service",
-            #service_notifier=notifier,
-            #monitor=opts.monitor,
-            #tracker=tracker,
-            #instance_name=server_options.instance_name, #.instance_name,
-            #protected_topics=protected_topics,
-            #external_address_file=external_address_file,
-            #msgdebug=opts.msgdebug,
-            #service_notifier=notifier,
-            #auth_enabled=server_options.auth_enabled,
-
-        ).run()
+            zmq_context=None,
+            message_bus=messsage_bus
+        )
+        router.run()
     except Exception as ex:
         _log.error("Unhandled exceeption from router thread.")
         _log.exception(ex)
@@ -155,6 +145,11 @@ class ZmqMessageBus(MessageBus):
         self._thread = None
         self._federation_bridge: FederationBridge | None = None
 
+        from queue import Queue
+        self._router_task_queue = Queue()
+        self._router_result_queue = Queue()
+        self._router_instance = None
+
     def start(self):
         import os
         env = os.environ.copy()
@@ -167,13 +162,23 @@ class ZmqMessageBus(MessageBus):
                                             self._server_options,
                                             self._auth_service,
                                             self._notifier,
-                                            self._stop_handler
+                                            self._stop_handler,
+                                            zmq_context,
+                                            self
                                         ])
         # self._notifier, self._tracker,
         # self._protected_topics, self._external_address_file, self._stop
         self._thread.start()
         if gevent_support:
             os.environ["GEVENT_SUPPORT"] = "True"
+
+    def set_router_instance(self, router):
+        """
+        Set the router instance reference for direct communication
+        
+        :param router: Router instance to reference
+        """
+        self._router_instance = router
 
     def is_running(self):
         return self._thread.is_alive()
@@ -196,18 +201,85 @@ class ZmqMessageBus(MessageBus):
         messagebus_config = getattr(self._config, 'messagebus_config', {})
         if not messagebus_config.get("enable_federation", False):
             return None
+        
+        # Verify thread safety is working
+        self._check_thread_safety()
             
         if self._federation_bridge is None:
             self._federation_bridge = ZmqFederationBridge(self)
             
         return self._federation_bridge
 
+    def execute_in_router_thread(self, fn, timeout=5):
+        """
+        Execute a function in the router's thread safely
+        
+        :param fn: Function to execute (no arguments)
+        :param timeout: Timeout in seconds
+        :return: Result of the function execution
+        :raises: TimeoutError if execution times out
+                 Any exception raised by the function
+        """
+        if not self._thread or not self._thread.is_alive():
+            raise RuntimeError("Router thread not running")
+            
+        if not self._router_instance:
+            raise RuntimeError("Router instance not available")
+        
+        import uuid
+        import queue
+        
+        # Create unique task ID
+        task_id = str(uuid.uuid4())
+        
+        # Queue the task
+        self._router_task_queue.put((task_id, fn))
+        
+        # Wait for result with timeout
+        try:
+            result_id, result_value, result_exception = self._router_result_queue.get(timeout=timeout)
+            
+            if result_id != task_id:
+                _log.error(f"Router thread execution error: got result for wrong task (expected {task_id}, got {result_id})")
+                raise RuntimeError(f"Router thread execution synchronization error")
+                
+            if result_exception is not None:
+                raise result_exception
+                
+            return result_value
+            
+        except queue.Empty:
+            _log.error(f"Router thread execution timed out after {timeout}s")
+            raise TimeoutError(f"Router thread execution timed out after {timeout} seconds")
+        
     def send_vip_message(self, message: Message):
         ...
 
     def receive_vip_message(self) -> Message:
         ...
-
+    def _check_thread_safety(self):
+        """Check if execute_in_router_thread is properly functioning"""
+        if not self._thread or not self._thread.is_alive():
+            _log.warning("Router thread not running, thread safety check skipped")
+            return False
+        
+        if not self._router_instance:
+            _log.warning("Router instance not available, thread safety check skipped")
+            return False
+            
+        try:
+            # Try to execute a simple function in router thread
+            result = self.execute_in_router_thread(lambda: "thread_safety_check_ok")
+            thread_safe = (result == "thread_safety_check_ok")
+            if thread_safe:
+                _log.debug("Thread safety check passed: execute_in_router_thread is working")
+            else:
+                _log.error(f"Thread safety check failed: unexpected result: {result}")
+            return thread_safe
+        except Exception as e:
+            _log.error(f"Thread safety check failed with error: {e}")
+            return False
+        
 def register_zmq_messagebus():
     """Register ZMQ messagebus with the global registry"""
     import json

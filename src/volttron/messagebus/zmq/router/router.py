@@ -43,7 +43,7 @@ _log = logging.getLogger(__name__)
 from volttron.client.known_identities import CONTROL
 from volttron.messagebus.zmq.monitor import  Monitor
 from volttron.server.server_options import ServerOptions
-from volttron.types import MessageBusStopHandler
+from volttron.types import MessageBus, MessageBusStopHandler
 from volttron.types.auth import AuthService
 from volttron.types.peer import ServicePeerNotifier
 from volttron.messagebus.zmq.serialize_frames import deserialize_frames, serialize_frames
@@ -103,8 +103,10 @@ class Router(BaseRouter):
             auth_service: AuthService | None = None,
             service_notifier: ServicePeerNotifier | None = None,
             stop_handler: MessageBusStopHandler | None = None,
-            zmq_context: zmq.Context | None = None
+            zmq_context: zmq.Context | None = None,
+            message_bus: MessageBus | None = None
     ):
+        from .. import ZmqMessageBus
 
         super().__init__(
             context=zmq_context,
@@ -123,6 +125,8 @@ class Router(BaseRouter):
         self.logger = _log
         if self.logger.level == logging.NOTSET:
             self.logger.setLevel(logging.WARNING)
+
+        self._message_bus: ZmqMessageBus = message_bus
 
         self._monitor = True
         self._tracker = False
@@ -339,6 +343,10 @@ class Router(BaseRouter):
 
     def _add_pubsub_peers(self, peer):
         self.pubsub.peer_add(peer)
+
+    def run(self):
+        self._message_bus.set_router_instance(self)
+        super().run()
 
     def poll_sockets(self):
         """

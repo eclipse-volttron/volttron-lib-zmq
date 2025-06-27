@@ -310,3 +310,6 @@ class ZmqFederationBridge(FederationBridge):
                 
         except Exception as e:
             _log.error(f"Error in _do_sync_subscriptions: {e}")
+
+
+    
