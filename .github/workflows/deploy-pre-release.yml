@@ -1,0 +1,27 @@
+---
+name: Deploy Pre-Release Artifacts
+
+on:
+  schedule:
+    - cron: '0 9 * * 6'
+  workflow_dispatch: # Allows manual triggering of the workflow
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  LANG: en_US.utf-8
+  LC_ALL: en_US.utf-8
+  PYTHON_VERSION: '3.10'
+  OWNER: eclipse-volttron
+  POETRY_VERSION: '2.1.1'
+
+jobs:
+  deploy-pre-release:
+    uses: eclipse-volttron/github-tooling/.github/workflows/deploy-pre-release.yml@main
+    secrets:
+      pypi-token: ${{ secrets.PYPI_TOKEN }}
