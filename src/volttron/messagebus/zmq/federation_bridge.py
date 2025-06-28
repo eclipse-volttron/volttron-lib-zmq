@@ -21,42 +21,6 @@ class ZmqFederationBridge(FederationBridge):
         """
         self._message_bus = zmq_message_bus
         self._connected_platforms = {}  # Store platform connection info
-    
-    # def connect(self, platform_id: str, platform_address: str, credentials: Any) -> bool:
-    #     """
-    #     Connect to a remote platform
-        
-    #     :param platform_id: ID of the remote platform
-    #     :param platform_address: Address of the remote platform
-    #     :param credentials: Public key credential for the remote platform
-    #     :return: True if connection was successful
-    #     """
-    #     try:
-    #         # Get auth service from message bus
-    #         auth_service = self._message_bus.auth
-    #         auth_service.add_federation_platform(platform_id, credentials)
-            
-    #         # Store connection info
-    #         self._connected_platforms[platform_id] = {
-    #             "address": platform_address,
-    #             "credentials": credentials,
-    #             "connected": True
-    #         }
-            
-    #         # Execute in the router's thread for thread safety
-    #         self._message_bus.execute_in_router_thread(
-    #             lambda: self._message_bus.router.connect_remote_platform(
-    #                 platform_id=platform_id, 
-    #                 address=platform_address
-    #             )
-    #         )
-            
-    #         _log.info(f"Connected to federated platform: {platform_id}")
-    #         return True
-            
-    #     except Exception as e:
-    #         _log.error(f"Error connecting to federated platform {platform_id}: {e}")
-    #         return False
 
     def connect(self, platform_id: str, platform_address: str, credentials: Any) -> bool:
         """
