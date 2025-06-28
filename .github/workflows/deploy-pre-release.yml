@@ -2,11 +2,12 @@
 name: Deploy Pre-Release Artifacts
 
 on:
-  pull_request:
-    types:
-      - closed
-    branches:
-      - develop
+  schedule:
+    - cron: '0 9 * * 6'
+  workflow_dispatch: # Allows manual triggering of the workflow
+
+permissions:
+  contents: write
 
 defaults:
   run:
@@ -17,11 +18,10 @@ env:
   LC_ALL: en_US.utf-8
   PYTHON_VERSION: '3.10'
   OWNER: eclipse-volttron
+  POETRY_VERSION: '2.1.1'
 
 jobs:
   deploy-pre-release:
-    if: ${{ github.event.pull_request.merged && ! startsWith(github.ref_name, 'releases/') && github.ref_name != 'main' && ! contains(github.event.pull_request.labels.*.name, 'documentation') }}
     uses: eclipse-volttron/github-tooling/.github/workflows/deploy-pre-release.yml@main
-    secrets: inherit
-      #git-token: ${{ secrets.AUTO_PROJECT_PAT }}
-      #pypi-token: ${{ secrets.PYPI_TOKEN }}
+    secrets:
+      pypi-token: ${{ secrets.PYPI_TOKEN }}
