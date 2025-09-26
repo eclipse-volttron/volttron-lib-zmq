@@ -127,7 +127,11 @@ class MessageCache:
         self.logger.info(f"Deleting cache for {platform_id}")
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.executemany("DELETE from missed_messages WHERE platform_id = ? "
-                           "AND cached_time = ?",
-                           [(platform_id, t) for t in timestamps])
+        self.logger.debug(f"platform id : {platform_id}")
+        self.logger.debug(f"timestamps: {timestamps}  type: {type(timestamps)}")
+        result = cursor.executemany("DELETE from missed_messages WHERE platform_id = ? "
+                                "AND cached_time = ?",
+                                 [(platform_id, t) for t in timestamps ])
+        self.logger.debug(f"**********************DELETED {cursor.rowcount}")
         conn.commit()
+        self.logger.debug(f"RESULT FROM DB DELETE IS {result}")
