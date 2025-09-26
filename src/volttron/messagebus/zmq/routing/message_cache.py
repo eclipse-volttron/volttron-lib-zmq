@@ -7,7 +7,6 @@ from threading import local
 from collections import defaultdict, deque
 from datetime import datetime
 import time
-import logging
 import psutil
 from volttron.utils import (
     process_timestamp,
