@@ -22,26 +22,22 @@
 # ===----------------------------------------------------------------------===
 # }}}
 import json
+import logging
 import os
-import types
-from symtable import Class
+import random
 
 import gevent
-
-from volttron.messagebus.zmq.routing.message_cache import MessageCache
-
-from volttron.types.auth.auth_credentials import VolttronCredentials
 import zmq
-import logging
 from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
-
-from volttron.messagebus.zmq.serialize_frames import serialize_frames, deserialize_frames
-from volttron.messagebus.zmq.keystore import KeyStore
-from zmq.utils import jsonapi
-from volttron.messagebus.zmq.socket import Address
-from zmq.utils.monitor import recv_monitor_message
-import random
 from zmq.green import ENOTSOCK
+from zmq.utils import jsonapi
+from zmq.utils.monitor import recv_monitor_message
+
+from volttron.messagebus.zmq.keystore import KeyStore
+from volttron.messagebus.zmq.routing.message_cache import MessageCache
+from volttron.messagebus.zmq.serialize_frames import serialize_frames, deserialize_frames
+from volttron.messagebus.zmq.socket import Address
+from volttron.types.auth.auth_credentials import VolttronCredentials
 
 STATUS_CONNECTING = "CONNECTING"
 STATUS_CONNECTED = "CONNECTED"
@@ -136,18 +132,18 @@ class RoutingService(object):
                     if handshake_request == b"hello":
                         name = frames[8]
                         frames.pop(0)
-                        _log.info("HELLO Recieved hello, sending welcome to {}".format(name))
+                        _log.debug("HELLO Recieved hello, sending welcome to {}".format(name))
                         frames[6] = "welcome"
                         frames[7] = self._my_instance_name
                         try:
-                            _log.info("Sending welcome message to sender {}".format(name))
+                            _log.debug("Sending welcome message to sender {}".format(name))
                             self.send_external(name, frames)
                         except ZMQError as exc:
                             _log.error(f"ZMQ error: {exc}")
                     # Respond to 'welcome' response by sending Pubsub subscription list
                     elif handshake_request == "welcome":
                         name = frames[8]
-                        _log.info(
+                        _log.debug(
                             "HELLO Received welcome. Connection established with: {}".format(name))
                         try:
                             self._instances[name]["status"] = STATUS_CONNECTED
@@ -210,7 +206,7 @@ class RoutingService(object):
             _log.error("ZMQ error on external connection {}".format(ex))
         self._web_addresses.remove(web_address)
         if not self._web_addresses:
-            _log.info("MULTI_PLATFORM SETUP MODE COMPLETED")
+            _log.debug("MULTI_PLATFORM SETUP MODE COMPLETED")
 
     def _build_connection(self, instance_info, our_credentials: VolttronCredentials):
         """
@@ -219,7 +215,7 @@ class RoutingService(object):
         :param serverkey: serverkey for establishing connection with remote instance
         :return:
         """
-        _log.info("instance_info {}".format(instance_info))
+        _log.debug("instance_info {}".format(instance_info))
         try:
             instance_name = instance_info["instance-name"]
             serverkey = instance_info["serverkey"]
@@ -230,7 +226,7 @@ class RoutingService(object):
 
         # Return immediately if vip_address of external instance is same as self address
         if address in self._my_addr:
-            _log.info("Same instance: {}".format(address))
+            _log.debug("Same instance: {}".format(address))
             return
         sock = zmq.Socket(zmq.Context(), zmq.DEALER)
         sock.sndtimeo = 0
@@ -282,7 +278,7 @@ class RoutingService(object):
                 "hello",
                 self._my_instance_name,
             ])
-            _log.info(f"HELLO Sending hello to: {instance_name}")
+            _log.debug(f"HELLO Sending hello to: {instance_name}")
             self.send_external(instance_name, frames)
         except zmq.error.ZMQError as ex:
             _log.error("ZMQ error on external connection {}".format(ex))
@@ -302,10 +298,9 @@ class RoutingService(object):
             ]
 
             if event & zmq.EVENT_CONNECTED:
-                _log.info(
+                _log.debug(
                     "CONNECTED to external platform: {}!! Sending MY subscriptions !!".format(
                         instance_name[0]))
-                _log.info(f"Connected handlers are {self._on_connect_handlers}")
                 self._instances[instance_name[0]]["status"] = STATUS_CONNECTED
                 for handler in self._on_connect_handlers:
                     handler(instance_name[0])
@@ -313,12 +308,11 @@ class RoutingService(object):
                 # _log.info("ROUTINGSERVICE socket DELAYED...Lets wait")
                 self._instances[instance_name[0]]["status"] = STATUS_CONNECTION_DELAY
             elif event & zmq.EVENT_DISCONNECTED:
-                _log.info("DISCONNECTED from external platform: {}. "
+                _log.debug("DISCONNECTED from external platform: {}. "
                            "Subscriptions will be resent on reconnect".format(instance_name[0]))
                 self._instances[instance_name[0]]["status"] = STATUS_DISCONNECTED
-                _log.info(f"Disconnected handlers are {self._on_disconnect_handlers}")
                 for handler in self._on_temp_disconnect_handlers:
-                    _log.info(f"##################Calling FederationService handler {handler}")
+                    _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a reconnect) {handler}")
                     handler(instance_name[0])
                     self.message_cache.flush_to_db() # flush in memory cache to db
             gevent.sleep(0.1)
@@ -408,11 +402,9 @@ class RoutingService(object):
 
             if (d_frames[5] != "hello" and
                     self._instances[instance_name]["status"] != STATUS_CONNECTED):
-                _log.info(
-                    f"******************Disconnected platform: {instance_name} caching instead")
+                _log.debug(f"Disconnected platform: {instance_name} caching instead")
                 self.message_cache.write_to_cache(instance_name, json.dumps(frames))
                 return False
-            #_log.info(f"send_external Instance info is: {instance_info}")
             try:
                 # Send using external socket
                 success = self._send_to_socket(instance_info["socket"], frames)
@@ -434,7 +426,6 @@ class RoutingService(object):
             #             self._instances[_instance_name]['status'] = STATUS_DISCONNECTED
             #             raise
         except KeyError:
-            _log.info(f"******************My instance name is: {self._my_instance_name}")
             frames[:0] = [self._my_instance_name]
             _log.error("Unknown instance/platform. Key error for platform {0}".format(instance_name))
 
@@ -484,7 +475,7 @@ class RoutingService(object):
             sender = bytes(frames[0])
             routing_table = bytes(frames[7])
             routing_table = jsonapi.loads(routing_table)
-            _log.info("ROUTING SERVICE Ext routing TABLE: {0}, MY {1} ".format(
+            _log.debug("ROUTING SERVICE Ext routing TABLE: {0}, MY {1} ".format(
                 routing_table, self._routing_table))
             for vip_id in routing_table:
                 if vip_id in self._routing_table:
@@ -498,7 +489,7 @@ class RoutingService(object):
                 else:
                     route_list = [sender]
                     self._routing_table[vip_id] = route_list.extend(routing_table[vip_id])
-            _log.info("ROUTING SERVICE my routing TABLE: {} ".format(self._routing_table))
+            _log.debug("ROUTING SERVICE my routing TABLE: {} ".format(self._routing_table))
             return True
         else:
             return False
@@ -520,7 +511,7 @@ class RoutingService(object):
         :return: True if connection was successfully initiated
         """
         try:
-            _log.info(f"Routing service adding external route to {platform_id} at {address}")
+            _log.debug(f"Routing service adding external route to {platform_id} at {address}")
 
             # Check if platform already exists
             if platform_id in self._instances:
@@ -537,7 +528,7 @@ class RoutingService(object):
             # Use existing _build_connection method
             self._build_connection(instance_info, our_credentials=our_credentials)
             
-            _log.info(f"External route added for platform: {platform_id}")
+            _log.debug(f"External route added for platform: {platform_id}")
             return True
             
         except Exception as e:
@@ -588,7 +579,7 @@ class RoutingService(object):
                     
                 del self._instances[platform_id]
             
-            _log.info(f"External route removed for platform: {platform_id}")
+            _log.debug(f"External route removed for platform: {platform_id}")
             return True
             
         except Exception as e:

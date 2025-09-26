@@ -107,13 +107,13 @@ class PubSubService:
         temp = {}
 
     def external_platform_add(self, instance_name):
-        self._logger.info("PUBSUBSERVICE send subs external {}".format(instance_name))
+        self._logger.debug("PUBSUBSERVICE send subs external {}".format(instance_name))
         if self._ext_router is not None:
             self._send_external_subscriptions([instance_name])
 
     def external_platform_drop(self, instance_name):
         if instance_name in self._ext_subscriptions:
-            self._logger.info(
+            self._logger.debug(
                 "PUBSUBSERVICE dropping external subscriptions for {}".format(instance_name))
             del self._ext_subscriptions[instance_name]
 
@@ -214,8 +214,8 @@ class PubSubService:
                     return False
                 self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
-            self._logger.info("Subscribe after: {}".format(self._peer_subscriptions))
-            self._logger.info(f"Is ext_router a thing? {self._ext_router}")
+            self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
+            self._logger.debug(f"Is ext_router a thing? {self._ext_router}")
             if is_all and self._ext_router is not None:
                 # Send subscription message to all connected platforms
                 external_platforms = self._ext_router.get_connected_platforms()
@@ -287,7 +287,7 @@ class PubSubService:
         :Return Values:
         Number of subscribers to whom the message was sent
         """
-        self._logger.info(f"Peer Publish: {frames}, user: {user_id}")
+        self._logger.debug(f"Peer Publish: {frames}, user: {user_id}")
         if len(frames) > 8:
             try:
                 msg = frames[8]
@@ -514,10 +514,9 @@ class PubSubService:
             for platform_id in external_subscribers:
                 try:
                     if self._ext_router is not None:
-                        self._logger.info(f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} frames {frames}")
+                        self._logger.debug("Sending to: {}".format(platform_id))
                         # Send the message to the external platform
                         self._ext_router.send_external(platform_id, frames)
-                        self._logger.info(f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} success ")
                 except ZMQError as exc:
                     # We don't seem to reach here if the external instance is down!
                     self._logger.info(
@@ -584,10 +583,10 @@ class PubSubService:
             except KeyError:
                 error = None
             if exc.errno == EHOSTUNREACH:
-                self._logger.info("Host unreachable {}".format(subscriber))
+                self._logger.debug("Host unreachable {}".format(subscriber))
                 drop.append(subscriber)
             elif exc.errno == EAGAIN:
-                self._logger.info("EAGAIN error {}".format(subscriber))
+                self._logger.debug("EAGAIN error {}".format(subscriber))
                 # Only send EAGAIN errors
                 proto, user_id, msg_id, subsystem = frames[2:6]
                 frames = [
@@ -683,7 +682,7 @@ class PubSubService:
 
         # subsystem = bytes(subsystem)
         # op = bytes(op)
-        self._logger.info(f"PubSubService subsystem: {subsystem} operation: {op}")
+        self._logger.debug(f"PubSubService subsystem: {subsystem} operation: {op}")
         if subsystem == "pubsub":
             if op == "subscribe":
                 result = self._peer_subscribe(frames)
@@ -709,10 +708,10 @@ class PubSubService:
             elif op == "protected_update":
                 self._update_protected_topics(frames)
             elif op == "external_list":
-                # self._logger.info("PUBSUBSERVICE external_list")
+                # self._logger.debug("PUBSUBSERVICE external_list")
                 result = self._update_external_subscriptions(frames)
             elif op == "external_publish":
-                self._logger.info("PUBSUBSERVICE external to local publish")
+                self._logger.debug("PUBSUBSERVICE external to local publish")
                 self._external_to_local_publish(frames)
             elif op == "error":
                 self._handle_error(frames)
@@ -729,7 +728,7 @@ class PubSubService:
             response.append("request_response")
             response.append(result)
 
-        self._logger.info(f"Response from op: {op} is {response}")
+        self._logger.debug(f"Response from op: {op} is {response}")
         return response
 
     def _check_topic_authorization(self, peer, topic, access: Literal["publish", "subscribe"]) -> str | None:
@@ -808,7 +807,7 @@ class PubSubService:
                     prefixes = msg[instance_name]
                     # Store external subscription list for later use (during publish)
                     self._ext_subscriptions[instance_name] = prefixes
-                    self._logger.info(
+                    self._logger.debug(
                         "PUBSUBSERVICE New external list from {0}: List: {1}".format(
                             instance_name, self._ext_subscriptions))
             except KeyError as exc:
@@ -859,8 +858,8 @@ class PubSubService:
                     ]
                     self._ext_router.send_external(publisher, frames)
                     return
-                except ValueError:
-                    self._logger.info("Value error")
+                except ValueError as v:
+                    self._logger.error(f"Value error {v}")
 
             # Make it an internal publish
             frames[6] = "publish"
@@ -881,10 +880,10 @@ class PubSubService:
                         topic,
                     ]
                     self._ext_router.send_external(publisher, frames)
-                except ValueError:
-                    self._logger.info("Value error")
+                except ValueError as v:
+                    self._logger.error(f"Value error {v}")
         else:
-            self._logger.info("Incorrect frames {}".format(len(frames)))
+            self._logger.error("Incorrect frames {}".format(len(frames)))
         return subscribers_count
 
     def _handle_error(self, frames):
@@ -913,7 +912,7 @@ class PubSubService:
         frames = [sender, "", "VIP1", "", "", "pubsub", "publish", topic, json_msg]
         # Send it through ZMQ bus
         self._distribute(frames, "")
-        self._logger.info("Publish callback {}".format(topic))
+        self._logger.debug("Publish callback {}".format(topic))
 
 class ProtectedPubSubTopics(object):
     """Simple class to contain protected pubsub topics"""
