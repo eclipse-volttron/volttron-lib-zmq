@@ -79,7 +79,7 @@ class PubSubService:
             self._ext_router.register("on_disconnect", self.external_platform_drop)
         else:
             _log.error("Routing Service is None!")
-        
+
     def _add_peer_subscription(self, peer, bus, prefix, platform="internal"):
         """
         This maintains subscriptions for specified peer (subscriber), bus and prefix.
@@ -107,13 +107,13 @@ class PubSubService:
         temp = {}
 
     def external_platform_add(self, instance_name):
-        self._logger.debug("PUBSUBSERVICE send subs external {}".format(instance_name))
+        self._logger.info("PUBSUBSERVICE send subs external {}".format(instance_name))
         if self._ext_router is not None:
             self._send_external_subscriptions([instance_name])
 
     def external_platform_drop(self, instance_name):
         if instance_name in self._ext_subscriptions:
-            self._logger.debug(
+            self._logger.info(
                 "PUBSUBSERVICE dropping external subscriptions for {}".format(instance_name))
             del self._ext_subscriptions[instance_name]
 
@@ -126,11 +126,11 @@ class PubSubService:
         :param items subcription items or empty dict
         :type dict
         """
-        # self._logger.debug("SYNC before: {0}, {1}".format(peer, items))
+        # self._logger.info("SYNC before: {0}, {1}".format(peer, items))
         items = {(platform, bus, prefix)
                  for platform, buses in items.items() for bus, topics in buses.items()
                  for prefix in topics}
-        # self._logger.debug("SYNC after: {}".format(items))
+        # self._logger.info("SYNC after: {}".format(items))
         remove = []
         for platform, bus_subscriptions in self._peer_subscriptions.items():
             for bus, subscriptions in bus_subscriptions.items():
@@ -151,7 +151,7 @@ class PubSubService:
         for platform, bus, prefix in items:
             self._add_peer_subscription(peer, bus, prefix, platform)
         if "all" in self._peer_subscriptions and self._ext_router is not None:
-            # self._logger.debug("Syncing ext subscriptions: {}".format(self._peer_subscriptions))
+            # self._logger.info("Syncing ext subscriptions: {}".format(self._peer_subscriptions))
             # Send subscription message to all connected platforms
             external_platforms = self._ext_router.get_connected_platforms()
             self._send_external_subscriptions(external_platforms)
@@ -214,8 +214,8 @@ class PubSubService:
                     return False
                 self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
 
-            self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
-            self._logger.debug(f"Is ext_router a thing? {self._ext_router}")
+            self._logger.info("Subscribe after: {}".format(self._peer_subscriptions))
+            self._logger.info(f"Is ext_router a thing? {self._ext_router}")
             if is_all and self._ext_router is not None:
                 # Send subscription message to all connected platforms
                 external_platforms = self._ext_router.get_connected_platforms()
@@ -287,7 +287,7 @@ class PubSubService:
         :Return Values:
         Number of subscribers to whom the message was sent
         """
-        self._logger.debug(f"Peer Publish: {frames}, user: {user_id}")
+        self._logger.info(f"Peer Publish: {frames}, user: {user_id}")
         if len(frames) > 8:
             try:
                 msg = frames[8]
@@ -460,7 +460,7 @@ class PubSubService:
                 subscribers |= subscription
 
         if subscribers:
-            # self._logger.debug("PUBSUBSERVICE: found subscribers: {}".format(subscribers))
+            # self._logger.info("PUBSUBSERVICE: found subscribers: {}".format(subscribers))
             for subscriber in subscribers:
                 frames[0] = subscriber
                 try:
@@ -498,7 +498,7 @@ class PubSubService:
             for prefix in subscriptions:
                 if topic.startswith(prefix):
                     external_subscribers.add(platform_id)
-        # self._logger.debug("PUBSUBSERVICE External subscriptions {0}, {1}".format(topic, external_subscribers))
+        # self._logger.info("PUBSUBSERVICE External subscriptions {0}, {1}".format(topic, external_subscribers))
         if external_subscribers:
             frames[:] = []
             frames[0:7] = (
@@ -514,10 +514,14 @@ class PubSubService:
             for platform_id in external_subscribers:
                 try:
                     if self._ext_router is not None:
-                        self._logger.debug("Sending to: {}".format(platform_id))
+                        self._logger.info(f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} frames {frames}")
                         # Send the message to the external platform
-                        success = self._ext_router.send_external(platform_id, frames)
+                        self._ext_router.send_external(platform_id, frames)
+                        self._logger.info(f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} success ")
                 except ZMQError as exc:
+                    # We don't seem to reach here if the external instance is down!
+                    self._logger.info(
+                        f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} FAILURE")
                     try:
                         errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
                     except KeyError:
@@ -541,10 +545,8 @@ class PubSubService:
                         except ZMQError as exc:
                             # raise
                             pass
-                    # If external platform is unreachable, drop the all subscriptions
                     if exc.errno == EHOSTUNREACH:
-                        self._logger.debug("Host not reachable: {}".format(platform_id))
-                        # self.external_platform_drop(platform_id)
+                        self._logger.info("Host not reachable: {}".format(platform_id))
                     else:
                         raise
         return len(external_subscribers)
@@ -582,10 +584,10 @@ class PubSubService:
             except KeyError:
                 error = None
             if exc.errno == EHOSTUNREACH:
-                self._logger.debug("Host unreachable {}".format(subscriber))
+                self._logger.info("Host unreachable {}".format(subscriber))
                 drop.append(subscriber)
             elif exc.errno == EAGAIN:
-                self._logger.debug("EAGAIN error {}".format(subscriber))
+                self._logger.info("EAGAIN error {}".format(subscriber))
                 # Only send EAGAIN errors
                 proto, user_id, msg_id, subsystem = frames[2:6]
                 frames = [
@@ -681,7 +683,7 @@ class PubSubService:
 
         # subsystem = bytes(subsystem)
         # op = bytes(op)
-        self._logger.debug(f"PubSubService subsystem: {subsystem} operation: {op}")
+        self._logger.info(f"PubSubService subsystem: {subsystem} operation: {op}")
         if subsystem == "pubsub":
             if op == "subscribe":
                 result = self._peer_subscribe(frames)
@@ -707,10 +709,10 @@ class PubSubService:
             elif op == "protected_update":
                 self._update_protected_topics(frames)
             elif op == "external_list":
-                # self._logger.debug("PUBSUBSERVICE external_list")
+                # self._logger.info("PUBSUBSERVICE external_list")
                 result = self._update_external_subscriptions(frames)
             elif op == "external_publish":
-                self._logger.debug("PUBSUBSERVICE external to local publish")
+                self._logger.info("PUBSUBSERVICE external to local publish")
                 self._external_to_local_publish(frames)
             elif op == "error":
                 self._handle_error(frames)
@@ -727,7 +729,7 @@ class PubSubService:
             response.append("request_response")
             response.append(result)
 
-        self._logger.debug(f"Response from op: {op} is {response}")
+        self._logger.info(f"Response from op: {op} is {response}")
         return response
 
     def _check_topic_authorization(self, peer, topic, access: Literal["publish", "subscribe"]) -> str | None:
@@ -806,7 +808,7 @@ class PubSubService:
                     prefixes = msg[instance_name]
                     # Store external subscription list for later use (during publish)
                     self._ext_subscriptions[instance_name] = prefixes
-                    self._logger.debug(
+                    self._logger.info(
                         "PUBSUBSERVICE New external list from {0}: List: {1}".format(
                             instance_name, self._ext_subscriptions))
             except KeyError as exc:
@@ -858,7 +860,7 @@ class PubSubService:
                     self._ext_router.send_external(publisher, frames)
                     return
                 except ValueError:
-                    self._logger.debug("Value error")
+                    self._logger.info("Value error")
 
             # Make it an internal publish
             frames[6] = "publish"
@@ -880,9 +882,9 @@ class PubSubService:
                     ]
                     self._ext_router.send_external(publisher, frames)
                 except ValueError:
-                    self._logger.debug("Value error")
+                    self._logger.info("Value error")
         else:
-            self._logger.debug("Incorrect frames {}".format(len(frames)))
+            self._logger.info("Incorrect frames {}".format(len(frames)))
         return subscribers_count
 
     def _handle_error(self, frames):
@@ -906,12 +908,12 @@ class PubSubService:
         :param message: message body
         :return:
         """
-        # self._logger.debug("PubSubService message: {}".format(message))
+        # self._logger.info("PubSubService message: {}".format(message))
         json_msg = jsonapi.dumps(dict(sender=peer, bus=bus, headers=headers, message=message))
         frames = [sender, "", "VIP1", "", "", "pubsub", "publish", topic, json_msg]
         # Send it through ZMQ bus
         self._distribute(frames, "")
-        self._logger.debug("Publish callback {}".format(topic))
+        self._logger.info("Publish callback {}".format(topic))
 
 class ProtectedPubSubTopics(object):
     """Simple class to contain protected pubsub topics"""

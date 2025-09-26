@@ -30,9 +30,8 @@ import sys
 import uuid
 
 import gevent
-from volttron.types.auth.auth_credentials import VolttronCredentials
-from watchdog_gevent import Observer
-from watchdog.events import FileSystemEventHandler
+
+from volttron.messagebus.zmq.routing.federation_service import FederationService
 
 
 import zmq
@@ -72,27 +71,6 @@ class FramesFormatter(object):
     __str__ = __repr__
 
 
-class FederationConfigHandler(FileSystemEventHandler):
-    """Handles federation_config.json file changes"""
-    
-    def __init__(self, router):
-        super().__init__()
-        self.router = router
-        
-    def on_modified(self, event):
-        if not event.is_directory and event.src_path.endswith('federation_config.json'):
-            _log.info(f"Federation config modified: {event.src_path}")
-            # Add small delay to ensure file write is complete
-            gevent.sleep(0.1)
-            self.router._process_federation_config()
-    
-    def on_created(self, event):
-        if not event.is_directory and event.src_path.endswith('federation_config.json'):
-            _log.info(f"Federation config created: {event.src_path}")
-            gevent.sleep(0.1)
-            self.router._process_federation_config()
-
-
 class Router(BaseRouter):
     """Concrete VIP router."""
 
@@ -115,7 +93,7 @@ class Router(BaseRouter):
         )
         local_addr = f"ipc://@{server_options.volttron_home.as_posix()}/run/vip.socket"
         self.local_address = Address(local_addr)
-        _log.debug(f"Local address is: {self.local_address}")
+        _log.info(f"Local address is: {self.local_address}")
         #self.local_address = Address(server_options.local_address)
         self._addr = server_options.address
         self.addresses = addresses = [Address(addr) for addr in set(server_options.address)]
@@ -139,6 +117,7 @@ class Router(BaseRouter):
         self._agent_monitor_frequency = server_options.agent_monitor_frequency
         self._auth_enabled = server_options.auth_enabled
         self._auth_service: AuthService | None = auth_service
+
         # Initialize RoutingService
         self._routing_service = RoutingService(
             socket=self.socket,
@@ -155,35 +134,33 @@ class Router(BaseRouter):
             auth_service=self._auth_service, 
             routing_service=self._routing_service
         )
-        
+
         # Initialize ExternalRPCService
         self.ext_rpc = ExternalRPCService(
             socket=self.socket, 
             routing_service=self._routing_service
         )
         # Federation tracking
-        self._federation_platforms = {}
-        self._federation_connections = {}  # Dict[platform_id, connection_info]
-        self._federation_config_path = Path(server_options.volttron_home) / "federation_config.json"
-        
-        # Setup federation file watcher
-        self._federation_observer = None
-        self._setup_federation_watcher()
-        
-        # Load initial federation config
-        # We are going to wait for the server to touch the file to start loading federation.
-        #self._load_initial_federation_config()
+        self.federation_service = None
+        if server_options.enable_federation and server_options.federation_url:
+            self.federation_service = FederationService(
+                options=server_options,
+                auth_service=self._auth_service,
+                routing_service=self._routing_service,
+                messagebus=self._message_bus
+            )
+
 
     def setup(self):
 
         sock = self.socket
         identity = str(uuid.uuid4())
         sock.identity = identity.encode("utf-8")
-        _log.debug("ROUTER SOCK identity: {}".format(sock.identity))
+        _log.info("ROUTER SOCK identity: {}".format(sock.identity))
         if self._monitor:
             Monitor(sock.get_monitor_socket()).start()
         sock.bind("inproc://vip")
-        _log.debug("In-process VIP router bound to inproc://vip")
+        _log.info("In-process VIP router bound to inproc://vip")
         sock.zap_domain = b"vip"
         addr = self.local_address
         if not addr.identity:
@@ -201,7 +178,7 @@ class Router(BaseRouter):
             addr.secretkey = secretkey
             addr.bind(sock)
 
-        _log.debug("Local VIP router bound to %s" % addr)
+        _log.info("Local VIP router bound to %s" % addr)
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
@@ -212,12 +189,12 @@ class Router(BaseRouter):
             if not address.domain:
                 address.domain = "vip"
             address.bind(sock)
-            _log.debug("Additional VIP router bound to %s" % address)
+            _log.info("Additional VIP router bound to %s" % address)
         
         self.pubsub = PubSubService(self.socket, self._auth_service, self._routing_service) # ._protected_topics, self._ext_routing)
         self.ext_rpc =  None # ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
-        _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
+        _log.info("ZMQ version: {}".format(zmq.zmq_version()))
 
     def issue(self, topic, frames, extra=None):
         log = self.logger.debug
@@ -262,8 +239,8 @@ class Router(BaseRouter):
     #    return result
 
     def handle_subsystem(self, frames, user_id):
-        _log.debug(f"Handling subsystem with frames: {frames} user_id: {user_id}")
-
+        _log.info(f"Handling subsystem with frames: {frames} user_id: {user_id}")
+        gevent.sleep(0.1)
         subsystem = frames[5]
         if subsystem == "quit":
             sender = frames[0]
@@ -285,7 +262,7 @@ class Router(BaseRouter):
                 if self._service_notifier:
                     self._service_notifier.peer_dropped(drop)
 
-                _log.debug("ROUTER received agent stop message. dropping peer: {}".format(drop))
+                _log.info("ROUTER received agent stop message. dropping peer: {}".format(drop))
             except IndexError:
                 _log.error(f"agentstop called but unable to determine agent from frames sent {frames}")
             return False
@@ -328,7 +305,7 @@ class Router(BaseRouter):
 
             return frames
         elif subsystem == "pubsub":
-            _log.debug(f"Handling pubsub frames {frames} user_id: {user_id}")
+            _log.info(f"Handling pubsub frames {frames} user_id: {user_id}")
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         elif subsystem == "routing_table":
@@ -363,16 +340,16 @@ class Router(BaseRouter):
                     frames = sock.recv_multipart(copy=False)
                     if isinstance(frames[0], zmq.Frame):
                         frames = deserialize_frames(frames)
-                    _log.debug(f"Routing frames {frames}")
+                    _log.info(f"Routing frames {frames}")
                     self.route(frames)
             elif sock in self._routing_service._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:
-                    _log.debug("From Ext Socket: ")
+                    _log.info("From Ext Socket: ")
                     self.ext_route(sock)
             elif sock in self._routing_service._monitor_sockets:
                 self._routing_service.handle_monitor_event(sock)
             else:
-                # _log.debug("External ")
+                # _log.info("External ")
                 frames = sock.recv_multipart(copy=False)
 
     def ext_route(self, socket):
@@ -386,7 +363,7 @@ class Router(BaseRouter):
         frames = socket.recv_multipart(copy=False)
         self.route(deserialize_frames(frames))
         for f in frames:
-            _log.debug("PUBSUBSERVICE Frames: {}".format(bytes(f)))
+            _log.info("PUBSUBSERVICE Frames: {}".format(bytes(f)))
         if len(frames) < 6:
             return
 
@@ -415,7 +392,7 @@ class Router(BaseRouter):
             try:
                 self.socket.send_multipart(frames, flags=NOBLOCK, copy=False)
             except ZMQError as ex:
-                _log.debug("ZMQ error: {}".format(ex))
+                _log.info("ZMQ error: {}".format(ex))
                 pass
         # Handle 'pubsub' subsystem messages
         elif name == "pubsub":
@@ -423,184 +400,26 @@ class Router(BaseRouter):
                 recipient = ""
                 frames[:1] = ["", ""]
                 for f in frames:
-                    _log.debug("frames: {}".format(bytes(f)))
+                    _log.info("frames: {}".format(bytes(f)))
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         # Handle 'routing_table' subsystem messages
         elif name == "routing_table":
             for f in frames:
-                _log.debug("frames: {}".format(bytes(f)))
+                _log.info("frames: {}".format(bytes(f)))
             if frames[1] == "VIP1":
                 frames[:1] = ["", ""]
             result = self._routing_service.handle_subsystem(frames)
             return result
-        
-    def _setup_federation_watcher(self):
-        """Setup watchdog observer for federation config file"""
-        try:
-            self._federation_observer = Observer()
-            handler = FederationConfigHandler(self)
-            
-            # Watch the VOLTTRON_HOME directory for federation_config.json changes
-            watch_dir = str(self._federation_config_path.parent)
-            self._federation_observer.schedule(handler, watch_dir, recursive=False)
-            self._federation_observer.start()
-            
-            _log.info(f"Federation config watcher started for: {self._federation_config_path}")
-            
-        except Exception as e:
-            _log.error(f"Failed to setup federation config watcher: {e}")
-            self._federation_observer = None
-
-    def _load_initial_federation_config(self):
-        """Load federation config on startup"""
-        if self._federation_config_path.exists():
-            _log.info("Loading initial federation configuration")
-            self._process_federation_config()
-        else:
-            _log.debug(f"No federation config found at: {self._federation_config_path}")
-
-    def _process_federation_config(self):
-        """Process federation config file changes"""
-        #try:
-        if not self._federation_config_path.exists():
-            _log.debug("Federation config file does not exist, clearing all federation connections")
-            self._clear_all_federation_connections()
-            return
-            
-        with open(self._federation_config_path, 'r') as f:
-            config_data = json.load(f)
-        
-        _log.debug(f"Processing federation config with {len(config_data)} platforms")
-
-        if 'platforms' in config_data:
-        
-            # Compare with current platforms and update connections
-            self._update_federation_connections(config_data['platforms'])
-
-        # except json.JSONDecodeError as e:
-        #     _log.error(f"Invalid JSON in federation config: {e}")
-        # except Exception as e:
-        #     _log.error(f"Error processing federation config: {e}")
-
-    def _update_federation_connections(self, new_platforms_list):
-        """Update federation connections based on config changes"""
-        # Convert current platforms dict to set of IDs for comparison
-        _log.info("_update_federation_connections")
-        
-        current_platform_ids = set(self._federation_platforms.keys())
-                
-        # Convert new platforms list to dict for easier processing
-        new_platforms_dict = {platform['id']: platform for platform in new_platforms_list}
-        new_platform_ids = set(new_platforms_dict.keys())
-        
-        # Check for duplicate IDs in the list
-        if len(new_platforms_list) != len(new_platforms_dict):
-            _log.warning("Duplicate platform IDs found in federation config, duplicates will be ignored")
-        
-        # Platforms to remove
-        to_remove = current_platform_ids - new_platform_ids
-        for platform_id in to_remove:
-            _log.info(f"Removing federation connection to platform: {platform_id}")
-            self._remove_federation_connection(platform_id)
-        
-        # Platforms to add or update
-        for platform_id, platform_config in new_platforms_dict.items():
-            if platform_id not in self._federation_platforms:
-                # New platform
-                _log.info(f"Adding new federation connection to platform: {platform_id}")
-                self._add_federation_connection(platform_id, platform_config)
-            else:
-                # Check if platform config changed (especially public_credentials)
-                current_config = self._federation_platforms[platform_id]
-                if self._platform_config_changed(current_config, platform_config):
-                    _log.info(f"Platform config changed for {platform_id}, refreshing connection")
-                    self._refresh_federation_connection(platform_id, platform_config)
-        
-        # Update our tracking - convert list back to dict for internal storage
-        self._federation_platforms = new_platforms_dict.copy()
-
-    def _platform_config_changed(self, old_config, new_config):
-        """Check if platform configuration has changed"""
-        # Check key fields that would require connection refresh
-        key_fields = ['address', 'public_credentials', 'group']
-        for field in key_fields:
-            if old_config.get(field) != new_config.get(field):
-                return True
-        return False
-
-    def _add_federation_connection(self, platform_id, platform_config):
-        """Add a new federation connection"""
-        #try:
-        # Extract connection details
-        address = platform_config['address']
-        public_credentials = platform_config['public_credentials']
-        group = platform_config.get('group', 'default')
-        
-        _log.debug(f"Creating federation connection: {platform_id} -> {address}")
-        
-        our_creds: VolttronCredentials = self._auth_service.get_credentials(identity=PLATFORM)
-        success = self._routing_service.add_external_route(
-            platform_id=platform_id,
-            address=address, 
-            public_key=public_credentials,
-            our_credentials=our_creds
-        )
-        
-        if success:
-            connection_info = {
-                'platform_id': platform_id,
-                'address': address,
-                'public_credentials': public_credentials,
-                'group': group
-            }
-            self._federation_connections[platform_id] = connection_info
-            _log.info(f"Federation connection established to {platform_id} at {address}")
-        else:
-            _log.error(f"Failed to establish federation connection to {platform_id}")
-            
-
-    def _remove_federation_connection(self, platform_id):
-        """Remove a federation connection"""
-        #try:
-        if hasattr(self, '_routing_service') and self._routing_service:
-            self._routing_service.remove_external_route(platform_id)
-            
-        if platform_id in self._federation_connections:
-            del self._federation_connections[platform_id]
-        
-        if platform_id in self._federation_platforms:
-            del self._federation_platforms[platform_id]
-                        
-        _log.info(f"Federation connection removed for platform: {platform_id}")
-            
-        # except Exception as e:
-        #     _log.error(f"Error removing federation connection for {platform_id}: {e}")
-
-    def _refresh_federation_connection(self, platform_id, new_config):
-        """Refresh an existing federation connection"""
-        # Remove old connection and add new one
-        self._remove_federation_connection(platform_id)
-        self._add_federation_connection(platform_id, new_config)
-
-    def _clear_all_federation_connections(self):
-        """Clear all federation connections"""
-        platform_ids = list([p['id'] for p in self._federation_platforms])
-        for platform_id in platform_ids:
-            self._remove_federation_connection(platform_id)
 
     def shutdown(self):
-        """Enhanced shutdown to cleanup federation watcher"""
+        """Enhanced shutdown to clean up federation watcher"""
         try:
-            if self._federation_observer:
-                self._federation_observer.stop()
-                self._federation_observer.join()
-                _log.debug("Federation config watcher stopped")
+            if self.federation_service:
+                self.federation_service.shutdown()
+                _log.debug("Federation service stopped")
         except Exception as e:
-            _log.error(f"Error stopping federation watcher: {e}")
-        
-        # Clear federation connections
-        self._clear_all_federation_connections()
+            _log.error(f"Error stopping federation service: {e}")
         
         # Call parent shutdown
         super().shutdown()
