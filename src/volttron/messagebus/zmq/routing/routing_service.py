@@ -21,22 +21,23 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
-import os
-from symtable import Class
-
-from volttron.types.auth.auth_credentials import VolttronCredentials
-import zmq
+import json
 import logging
-from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
-
-from volttron.messagebus.zmq.serialize_frames import serialize_frames
-from volttron.messagebus.zmq.keystore import KeyStore
-from zmq.utils import jsonapi
-from volttron.messagebus.zmq.socket import Address
-from zmq.utils.monitor import recv_monitor_message
+import os
 import random
+
+import gevent
+import zmq
+from zmq import EHOSTUNREACH, ZMQError, EAGAIN, NOBLOCK
 from zmq.green import ENOTSOCK
+from zmq.utils import jsonapi
+from zmq.utils.monitor import recv_monitor_message
+
+from volttron.messagebus.zmq.keystore import KeyStore
+from volttron.messagebus.zmq.routing.message_cache import MessageCache
+from volttron.messagebus.zmq.serialize_frames import serialize_frames, deserialize_frames
+from volttron.messagebus.zmq.socket import Address
+from volttron.types.auth.auth_credentials import VolttronCredentials
 
 STATUS_CONNECTING = "CONNECTING"
 STATUS_CONNECTED = "CONNECTED"
@@ -80,12 +81,14 @@ class RoutingService(object):
         self._socket_class = socket_class
         self._my_addr = my_addr
         self._my_instance_name = instance_name
-        self._onconnect_pubsub_handler = None
-        self._ondisconnect_pubsub_handler = None
+        self._on_connect_handlers = []
+        self._on_disconnect_handlers = []
+        self._on_temp_disconnect_handlers = []
         self._vip_sockets = set()
         self._monitor_sockets = set()
         self._socket_identities = dict()
         self._web_addresses = []
+        self.message_cache = MessageCache()
 
     def handle_subsystem(self, frames):
         """
@@ -101,7 +104,7 @@ class RoutingService(object):
         response = []
         result = False
 
-        #_log.debug(f"ROUTING SERVICE->handle_subystem frames: {frames}")
+        #_log.info(f"ROUTING SERVICE->handle_subystem frames: {frames}")
         try:
             sender, recipient, proto, usr_id, msg_id, subsystem, op = frames[:7]
         except (
@@ -136,7 +139,7 @@ class RoutingService(object):
                             _log.debug("Sending welcome message to sender {}".format(name))
                             self.send_external(name, frames)
                         except ZMQError as exc:
-                            _log.error("ZMQ error: ")
+                            _log.error(f"ZMQ error: {exc}")
                     # Respond to 'welcome' response by sending Pubsub subscription list
                     elif handshake_request == "welcome":
                         name = frames[8]
@@ -144,7 +147,8 @@ class RoutingService(object):
                             "HELLO Received welcome. Connection established with: {}".format(name))
                         try:
                             self._instances[name]["status"] = STATUS_CONNECTED
-                            self._onconnect_pubsub_handler(name)
+                            for handler in self._on_connect_handlers:
+                                handler(name)
                         except KeyError as exc:
                             _log.error(
                                 "Welcome message received from unknown platform: {}".format(name))
@@ -298,14 +302,20 @@ class RoutingService(object):
                     "CONNECTED to external platform: {}!! Sending MY subscriptions !!".format(
                         instance_name[0]))
                 self._instances[instance_name[0]]["status"] = STATUS_CONNECTED
-                self._onconnect_pubsub_handler(instance_name[0])
+                for handler in self._on_connect_handlers:
+                    handler(instance_name[0])
             elif event & zmq.EVENT_CONNECT_DELAYED:
-                # _log.debug("ROUTINGSERVICE socket DELAYED...Lets wait")
+                # _log.info("ROUTINGSERVICE socket DELAYED...Lets wait")
                 self._instances[instance_name[0]]["status"] = STATUS_CONNECTION_DELAY
             elif event & zmq.EVENT_DISCONNECTED:
                 _log.debug("DISCONNECTED from external platform: {}. "
                            "Subscriptions will be resent on reconnect".format(instance_name[0]))
                 self._instances[instance_name[0]]["status"] = STATUS_DISCONNECTED
+                for handler in self._on_temp_disconnect_handlers:
+                    _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a reconnect) {handler}")
+                    handler(instance_name[0])
+                    self.message_cache.flush_to_db() # flush in memory cache to db
+            gevent.sleep(0.1)
         except ZMQError as exc:
             if exc.errno == ENOTSOCK:
                 _log.error("Trying to use a non socket {}".format(exc))
@@ -320,9 +330,13 @@ class RoutingService(object):
         :return:
         """
         if type == "on_connect":
-            self._onconnect_pubsub_handler = handler
-        else:
-            self._ondisconnect_pubsub_handler = handler
+            self._on_connect_handlers.append(handler)
+        elif type == "on_disconnect":
+            self._on_disconnect_handlers.append(handler)
+        elif type == "on_temp_disconnect":
+            # for example temp network glitch don't remove subscription but notify to cache message, temp suspend
+            # cache replay
+            self._on_temp_disconnect_handlers.append(handler)
 
     def my_instance_name(self):
         """
@@ -338,7 +352,9 @@ class RoutingService(object):
         :return:
         """
         try:
-            self._ondisconnect_pubsub_handler(instance_name)
+            for handler in self._on_disconnect_handlers:
+                handler(instance_name)
+                self.message_cache.flush_to_db()
             instance_info = self._instances[instance_name]
             sock = instance_info["socket"]
             mon_sock = instance_info["monitor_socket"]
@@ -382,10 +398,17 @@ class RoutingService(object):
 
         try:
             instance_info = self._instances[instance_name]
-            #_log.debug(f"send_external Instance info is: {instance_info}")
+            d_frames = deserialize_frames(frames)
+
+            if (d_frames[5] != "hello" and
+                    self._instances[instance_name]["status"] != STATUS_CONNECTED):
+                _log.debug(f"Disconnected platform: {instance_name} caching instead")
+                self.message_cache.write_to_cache(instance_name, json.dumps(frames))
+                return False
             try:
                 # Send using external socket
                 success = self._send_to_socket(instance_info["socket"], frames)
+
             except ZMQError as exc:
                 _log.error("Could not send to {} using new socket".format(instance_name))
                 success = False
@@ -395,18 +418,18 @@ class RoutingService(object):
             #         frames[:0] = [self._my_instance_name]
             #
             #         try:
-            #             _log.debug("Trying to send with router socket")
+            #             _log.info("Trying to send with router socket")
             #             #success = self._send(self._socket, frames)
             #         except ZMQError as exc:
-            #             _log.debug("Dropping or setting to disconnected {}".format(_instance_name))
+            #             _log.info("Dropping or setting to disconnected {}".format(_instance_name))
             #             # Let's just update status as 'DISCONNECTED' for now
             #             self._instances[_instance_name]['status'] = STATUS_DISCONNECTED
             #             raise
         except KeyError:
-            _log.debug(f"******************My instance name is: {self._my_instance_name}")
             frames[:0] = [self._my_instance_name]
-            _log.debug("Key error for platform {0}".format(instance_name))
-            # success = self._send(self._socket, frames)
+            _log.error("Unknown instance/platform. Key error for platform {0}".format(instance_name))
+
+        # as of now no one seems to care about this return value
         return success
 
     def _send_to_socket(self, sock, frames):
@@ -425,7 +448,7 @@ class RoutingService(object):
 
         try:
             frames = serialize_frames(frames)
-            #_log.debug(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
+            #_log.info(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
             # Try sending the message to its recipient
             sock.send_multipart(frames, flags=NOBLOCK, copy=False)
         except ZMQError as exc:
@@ -505,7 +528,7 @@ class RoutingService(object):
             # Use existing _build_connection method
             self._build_connection(instance_info, our_credentials=our_credentials)
             
-            _log.info(f"External route added for platform: {platform_id}")
+            _log.debug(f"External route added for platform: {platform_id}")
             return True
             
         except Exception as e:
@@ -556,7 +579,7 @@ class RoutingService(object):
                     
                 del self._instances[platform_id]
             
-            _log.info(f"External route removed for platform: {platform_id}")
+            _log.debug(f"External route removed for platform: {platform_id}")
             return True
             
         except Exception as e:
