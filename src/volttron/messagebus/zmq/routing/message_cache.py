@@ -134,4 +134,3 @@ class MessageCache:
                                  [(platform_id, t) for t in timestamps ])
         self.logger.debug(f"**********************DELETED {cursor.rowcount}")
         conn.commit()
-        self.logger.debug(f"RESULT FROM DB DELETE IS {result}")
