@@ -632,13 +632,11 @@ class FederationService:
                 if self.stop_events[server_address].is_set():
                     _log.debug(f"[FederationService] stop event set for  {server_address}. exit replay loop.")
                     break
-                gevent.sleep(0.2)
-
             # Delete published messages from cache
             self._routing_service.message_cache.delete_from_cache(server_address, delete_from_cache)
 
             # Yield control to other greenlets
-            gevent.sleep(0.2)
+            gevent.sleep(1)
 
     def on_temp_disconnect(self, server_address):
         if server_address in self.stop_events:
