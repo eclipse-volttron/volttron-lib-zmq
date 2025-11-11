@@ -330,7 +330,16 @@ class Router(BaseRouter):
         Poll for incoming messages through router socket or other external socket connections
         """
         try:
-            sockets = dict(self._poller.poll())
+            if self.federation_service is None:
+                # block indefinitely
+                sockets = dict(self._poller.poll())
+            else:
+                # Don't block indefinitely. Periodically yield to federation service
+                # so that it can reply cached messages if any
+                sockets = []
+                while not sockets:
+                    sockets = dict(self._poller.poll(timeout=10000))
+                    gevent.sleep(0.1)
         except ZMQError as ex:
             _log.error("ZMQ Error while polling: {}".format(ex))
 
