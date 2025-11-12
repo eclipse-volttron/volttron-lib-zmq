@@ -126,11 +126,11 @@ class PubSubService:
         :param items subcription items or empty dict
         :type dict
         """
-        # self._logger.info("SYNC before: {0}, {1}".format(peer, items))
+        # self._logger.debug("SYNC before: {0}, {1}".format(peer, items))
         items = {(platform, bus, prefix)
                  for platform, buses in items.items() for bus, topics in buses.items()
                  for prefix in topics}
-        # self._logger.info("SYNC after: {}".format(items))
+        # self._logger.debug("SYNC after: {}".format(items))
         remove = []
         for platform, bus_subscriptions in self._peer_subscriptions.items():
             for bus, subscriptions in bus_subscriptions.items():
@@ -151,7 +151,7 @@ class PubSubService:
         for platform, bus, prefix in items:
             self._add_peer_subscription(peer, bus, prefix, platform)
         if "all" in self._peer_subscriptions and self._ext_router is not None:
-            # self._logger.info("Syncing ext subscriptions: {}".format(self._peer_subscriptions))
+            # self._logger.debug("Syncing ext subscriptions: {}".format(self._peer_subscriptions))
             # Send subscription message to all connected platforms
             external_platforms = self._ext_router.get_connected_platforms()
             self._send_external_subscriptions(external_platforms)
@@ -460,7 +460,7 @@ class PubSubService:
                 subscribers |= subscription
 
         if subscribers:
-            # self._logger.info("PUBSUBSERVICE: found subscribers: {}".format(subscribers))
+            # self._logger.debug("PUBSUBSERVICE: found subscribers: {}".format(subscribers))
             for subscriber in subscribers:
                 frames[0] = subscriber
                 try:
@@ -498,7 +498,7 @@ class PubSubService:
             for prefix in subscriptions:
                 if topic.startswith(prefix):
                     external_subscribers.add(platform_id)
-        # self._logger.info("PUBSUBSERVICE External subscriptions {0}, {1}".format(topic, external_subscribers))
+        # self._logger.debug("PUBSUBSERVICE External subscriptions {0}, {1}".format(topic, external_subscribers))
         if external_subscribers:
             frames[:] = []
             frames[0:7] = (
@@ -519,8 +519,7 @@ class PubSubService:
                         self._ext_router.send_external(platform_id, frames)
                 except ZMQError as exc:
                     # We don't seem to reach here if the external instance is down!
-                    self._logger.info(
-                        f"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Sending to: {platform_id} FAILURE")
+                    self._logger.error(f"Sending to: {platform_id} FAILURE")
                     try:
                         errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
                     except KeyError:
@@ -546,6 +545,9 @@ class PubSubService:
                             pass
                     if exc.errno == EHOSTUNREACH:
                         self._logger.info("Host not reachable: {}".format(platform_id))
+                        # do not drop subscriptions here. cache instead
+                        # TODO may be cache should be configurable and if cache is disabled
+                        #  we should drop subscriptions
                     else:
                         raise
         return len(external_subscribers)
@@ -907,7 +909,7 @@ class PubSubService:
         :param message: message body
         :return:
         """
-        # self._logger.info("PubSubService message: {}".format(message))
+        # self._logger.debug("PubSubService message: {}".format(message))
         json_msg = jsonapi.dumps(dict(sender=peer, bus=bus, headers=headers, message=message))
         frames = [sender, "", "VIP1", "", "", "pubsub", "publish", topic, json_msg]
         # Send it through ZMQ bus

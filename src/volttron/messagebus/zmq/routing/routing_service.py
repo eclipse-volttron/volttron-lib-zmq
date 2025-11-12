@@ -104,7 +104,7 @@ class RoutingService(object):
         response = []
         result = False
 
-        #_log.info(f"ROUTING SERVICE->handle_subystem frames: {frames}")
+        #_log.debug(f"ROUTING SERVICE->handle_subystem frames: {frames}")
         try:
             sender, recipient, proto, usr_id, msg_id, subsystem, op = frames[:7]
         except (
@@ -311,6 +311,8 @@ class RoutingService(object):
                 _log.debug("DISCONNECTED from external platform: {}. "
                            "Subscriptions will be resent on reconnect".format(instance_name[0]))
                 self._instances[instance_name[0]]["status"] = STATUS_DISCONNECTED
+                # TODO - if cache is made configuraable and if cache is disabled
+                #  call on_disconnect_handler. if cache is enabled call on_temp_disconnect
                 for handler in self._on_temp_disconnect_handlers:
                     _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a reconnect) {handler}")
                     handler(instance_name[0])
@@ -399,7 +401,6 @@ class RoutingService(object):
         try:
             instance_info = self._instances[instance_name]
             d_frames = deserialize_frames(frames)
-
             if (d_frames[5] != "hello" and
                     self._instances[instance_name]["status"] != STATUS_CONNECTED):
                 _log.debug(f"Disconnected platform: {instance_name} caching instead")
@@ -448,7 +449,7 @@ class RoutingService(object):
 
         try:
             frames = serialize_frames(frames)
-            #_log.info(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
+            #_log.debug(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
             # Try sending the message to its recipient
             sock.send_multipart(frames, flags=NOBLOCK, copy=False)
         except ZMQError as exc:
@@ -528,7 +529,7 @@ class RoutingService(object):
             # Use existing _build_connection method
             self._build_connection(instance_info, our_credentials=our_credentials)
             
-            _log.debug(f"External route added for platform: {platform_id}")
+            _log.info(f"External route added for platform: {platform_id}")
             return True
             
         except Exception as e:
@@ -579,7 +580,7 @@ class RoutingService(object):
                     
                 del self._instances[platform_id]
             
-            _log.debug(f"External route removed for platform: {platform_id}")
+            _log.info(f"External route removed for platform: {platform_id}")
             return True
             
         except Exception as e:

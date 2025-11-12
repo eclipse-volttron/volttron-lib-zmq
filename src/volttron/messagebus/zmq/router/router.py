@@ -93,7 +93,7 @@ class Router(BaseRouter):
         )
         local_addr = f"ipc://@{server_options.volttron_home.as_posix()}/run/vip.socket"
         self.local_address = Address(local_addr)
-        _log.info(f"Local address is: {self.local_address}")
+        _log.debug(f"Local address is: {self.local_address}")
         #self.local_address = Address(server_options.local_address)
         self._addr = server_options.address
         self.addresses = addresses = [Address(addr) for addr in set(server_options.address)]
@@ -156,11 +156,11 @@ class Router(BaseRouter):
         sock = self.socket
         identity = str(uuid.uuid4())
         sock.identity = identity.encode("utf-8")
-        _log.info("ROUTER SOCK identity: {}".format(sock.identity))
+        _log.debug("ROUTER SOCK identity: {}".format(sock.identity))
         if self._monitor:
             Monitor(sock.get_monitor_socket()).start()
         sock.bind("inproc://vip")
-        _log.info("In-process VIP router bound to inproc://vip")
+        _log.debug("In-process VIP router bound to inproc://vip")
         sock.zap_domain = b"vip"
         addr = self.local_address
         if not addr.identity:
@@ -178,7 +178,7 @@ class Router(BaseRouter):
             addr.secretkey = secretkey
             addr.bind(sock)
 
-        _log.info("Local VIP router bound to %s" % addr)
+        _log.debug("Local VIP router bound to %s" % addr)
         for address in self.addresses:
             if not address.identity:
                 address.identity = identity
@@ -189,12 +189,12 @@ class Router(BaseRouter):
             if not address.domain:
                 address.domain = "vip"
             address.bind(sock)
-            _log.info("Additional VIP router bound to %s" % address)
+            _log.debug("Additional VIP router bound to %s" % address)
         
         self.pubsub = PubSubService(self.socket, self._auth_service, self._routing_service) # ._protected_topics, self._ext_routing)
         self.ext_rpc =  None # ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
-        _log.info("ZMQ version: {}".format(zmq.zmq_version()))
+        _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
 
     def issue(self, topic, frames, extra=None):
         log = self.logger.debug
@@ -239,7 +239,7 @@ class Router(BaseRouter):
     #    return result
 
     def handle_subsystem(self, frames, user_id):
-        _log.info(f"Handling subsystem with frames: {frames} user_id: {user_id}")
+        _log.debug(f"Handling subsystem with frames: {frames} user_id: {user_id}")
         gevent.sleep(0.1)
         subsystem = frames[5]
         if subsystem == "quit":
@@ -349,16 +349,16 @@ class Router(BaseRouter):
                     frames = sock.recv_multipart(copy=False)
                     if isinstance(frames[0], zmq.Frame):
                         frames = deserialize_frames(frames)
-                    _log.info(f"Routing frames {frames}")
+                    _log.debug(f"Routing frames {frames}")
                     self.route(frames)
             elif sock in self._routing_service._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:
-                    _log.info("From Ext Socket: ")
+                    _log.debug("From Ext Socket: ")
                     self.ext_route(sock)
             elif sock in self._routing_service._monitor_sockets:
                 self._routing_service.handle_monitor_event(sock)
             else:
-                # _log.info("External ")
+                # _log.debug("External ")
                 frames = sock.recv_multipart(copy=False)
 
     def ext_route(self, socket):
@@ -372,7 +372,7 @@ class Router(BaseRouter):
         frames = socket.recv_multipart(copy=False)
         self.route(deserialize_frames(frames))
         for f in frames:
-            _log.info("PUBSUBSERVICE Frames: {}".format(bytes(f)))
+            _log.debug("PUBSUBSERVICE Frames: {}".format(bytes(f)))
         if len(frames) < 6:
             return
 
@@ -401,7 +401,7 @@ class Router(BaseRouter):
             try:
                 self.socket.send_multipart(frames, flags=NOBLOCK, copy=False)
             except ZMQError as ex:
-                _log.info("ZMQ error: {}".format(ex))
+                _log.error("ZMQ error: {}".format(ex))
                 pass
         # Handle 'pubsub' subsystem messages
         elif name == "pubsub":
@@ -409,13 +409,13 @@ class Router(BaseRouter):
                 recipient = ""
                 frames[:1] = ["", ""]
                 for f in frames:
-                    _log.info("frames: {}".format(bytes(f)))
+                    _log.debug("frames: {}".format(bytes(f)))
             result = self.pubsub.handle_subsystem(frames, user_id)
             return result
         # Handle 'routing_table' subsystem messages
         elif name == "routing_table":
             for f in frames:
-                _log.info("frames: {}".format(bytes(f)))
+                _log.debug("frames: {}".format(bytes(f)))
             if frames[1] == "VIP1":
                 frames[:1] = ["", ""]
             result = self._routing_service.handle_subsystem(frames)
