@@ -240,7 +240,7 @@ class Router(BaseRouter):
 
     def handle_subsystem(self, frames, user_id):
         _log.debug(f"Handling subsystem with frames: {frames} user_id: {user_id}")
-        gevent.sleep(0.1)
+        #gevent.sleep(0.1)
         subsystem = frames[5]
         if subsystem == "quit":
             sender = frames[0]

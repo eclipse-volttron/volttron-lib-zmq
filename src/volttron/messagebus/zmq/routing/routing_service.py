@@ -317,7 +317,7 @@ class RoutingService(object):
                     _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a reconnect) {handler}")
                     handler(instance_name[0])
                     self.message_cache.flush_to_db() # flush in memory cache to db
-            gevent.sleep(0.1)
+            #gevent.sleep(0.1)
         except ZMQError as exc:
             if exc.errno == ENOTSOCK:
                 _log.error("Trying to use a non socket {}".format(exc))
