@@ -51,4 +51,4 @@ class Monitor(threading.Thread):
             event, endpoint = sock.recv_multipart()
             event_id, event_value = struct.unpack("=HI", event)
             event_name = events[event_id]
-            self._log.info("%s %s %s", event_name, event_value, endpoint)
+            self._log.debug("%s %s %s", event_name, event_value, endpoint)
