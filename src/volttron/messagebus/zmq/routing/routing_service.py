@@ -70,6 +70,9 @@ class RoutingService(object):
             poller: zmq.Poller,
             my_addr: Address,
             instance_name: str,
+            enable_cache: bool = False,
+            cache_limit_gb: float = None,
+            cache_limit_hours: float = None,
             *args,
             **kwargs,
     ):
@@ -88,7 +91,9 @@ class RoutingService(object):
         self._monitor_sockets = set()
         self._socket_identities = dict()
         self._web_addresses = []
-        self.message_cache = MessageCache()
+        self.message_cache = None
+        if enable_cache:
+            self.message_cache = MessageCache(cache_limit_gb=cache_limit_gb, cache_limit_hours=cache_limit_hours)
 
     def handle_subsystem(self, frames):
         """
@@ -311,12 +316,20 @@ class RoutingService(object):
                 _log.debug("DISCONNECTED from external platform: {}. "
                            "Subscriptions will be resent on reconnect".format(instance_name[0]))
                 self._instances[instance_name[0]]["status"] = STATUS_DISCONNECTED
-                # TODO - if cache is made configuraable and if cache is disabled
-                #  call on_disconnect_handler. if cache is enabled call on_temp_disconnect
-                for handler in self._on_temp_disconnect_handlers:
-                    _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a reconnect) {handler}")
-                    handler(instance_name[0])
-                    self.message_cache.flush_to_db() # flush in memory cache to db
+
+                # if cache is enabled call on_temp_disconnect
+                if self.message_cache:
+                    for handler in self._on_temp_disconnect_handlers:
+                        _log.debug(f"Calling handlers for temp disconnect(i.e. handlers that would handle a "
+                                   f"reconnect) {handler}")
+                        handler(instance_name[0])
+                        #TODO - check if this flush is even necessary and if so should it be for this instance alone
+                        self.message_cache.flush_to_db() # flush in memory cache to db
+                else:
+                    # if cache is disabled call on_disconnect_handler.
+                    for handler in self._on_disconnect_handlers:
+                        _log.debug(f"Calling handlers for disconnect")
+                        handler(instance_name[0])
             #gevent.sleep(0.1)
         except ZMQError as exc:
             if exc.errno == ENOTSOCK:
@@ -356,8 +369,8 @@ class RoutingService(object):
         try:
             for handler in self._on_disconnect_handlers:
                 handler(instance_name)
-                self.message_cache.flush_to_db()
             instance_info = self._instances[instance_name]
+            # TODO - do we need to close this here?
             sock = instance_info["socket"]
             mon_sock = instance_info["monitor_socket"]
             mon_sock.close()
@@ -613,9 +626,15 @@ class RoutingService(object):
         Shutdown the routing service and cleanup all connections
         """
         try:
-            # Close all external connections
-            self.close_external_connections()
-            
+            if self.message_cache is not None:
+                # if cache is enabled flush all cached messages to db
+                # currently this is only for external connection but calling flush here so that
+                # it work even if we enable caching for local messages
+                self.message_cache.flush_to_db()
+                _log.warning("completed flush to db of message cache")
+            else:
+                _log.warning("Message cache is none")
+
             # Close all monitor sockets
             for mon_sock in list(self._monitor_sockets):
                 try:

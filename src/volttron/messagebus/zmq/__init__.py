@@ -98,13 +98,15 @@ def zmq_router(server_options: ServerOptions,
         )
         router.run()
     except Exception as ex:
-        _log.error("Unhandled exceeption from router thread.")
+        _log.error("Unhandled exception from router thread.")
         _log.exception(ex)
         raise
     except KeyboardInterrupt:
+        # we raise this when we get "quit" message - i.e. shutdown
+        _log.error("keyboard interrupt exception from router thread.")
         pass
     finally:
-        _log.debug("In finally")
+        # has to be called from here to kill core greenlets and exit volttron process
         if stop_handler is not None:
             stop_handler.message_bus_shutdown()
 
@@ -132,7 +134,7 @@ class ZmqMessageBus(MessageBus):
         #     self._secretkey = creds.secretkey
 
         self._server_options = server_options
-        self._config = self._server_options.get_messagebus_config()
+        #self._config = self._server_options.get_messagebus_config()
         self._auth_service = auth_service
         #self._opts = opts
         self._notifier = notifier

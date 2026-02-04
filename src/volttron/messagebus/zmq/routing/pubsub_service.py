@@ -545,9 +545,11 @@ class PubSubService:
                             pass
                     if exc.errno == EHOSTUNREACH:
                         self._logger.info("Host not reachable: {}".format(platform_id))
-                        # do not drop subscriptions here. cache instead
-                        # TODO may be cache should be configurable and if cache is disabled
-                        #  we should drop subscriptions
+                        # do not drop subscriptions here.
+                        # on disconnect or on temp disconnect handler is called based on whether
+                        # federation cache is enabled. If no cache is enabled, the registered
+                        # on_disconnect method (i.e. external_platform_drop) is called. so no need
+                        # to call here explicitly
                     else:
                         raise
         return len(external_subscribers)

@@ -31,9 +31,6 @@ import uuid
 
 import gevent
 
-from volttron.messagebus.zmq.routing.federation_service import FederationService
-
-
 import zmq
 from zmq import NOBLOCK, ZMQError
 
@@ -105,7 +102,6 @@ class Router(BaseRouter):
             self.logger.setLevel(logging.WARNING)
 
         self._message_bus: ZmqMessageBus = message_bus
-
         self._monitor = True
         self._tracker = False
         self._instance_name = server_options.instance_name
@@ -117,6 +113,18 @@ class Router(BaseRouter):
         self._agent_monitor_frequency = server_options.agent_monitor_frequency
         self._auth_enabled = server_options.auth_enabled
         self._auth_service: AuthService | None = auth_service
+        enable_federation = False
+        enable_cache = False  # currently cache is only for federation
+        cache_limit_gb = None
+        cache_limit_hours = None
+        if server_options.enable_federation and server_options.federation_url:
+            enable_federation = True
+            if server_options.enable_federation_cache:
+                enable_cache = True
+            if server_options.federation_cache_limit_gb:
+                cache_limit_gb = float(server_options.federation_cache_limit_gb)
+            if server_options.federation_cache_limit_hours:
+                cache_limit_hours = float(server_options.federation_cache_limit_hours)
 
         # Initialize RoutingService
         self._routing_service = RoutingService(
@@ -125,7 +133,10 @@ class Router(BaseRouter):
             socket_class=self._socket_class,
             poller=self._poller,
             my_addr=self._addr,  # Assuming _addr contains the address
-            instance_name=getattr(server_options, 'instance_name', 'default')
+            instance_name=getattr(server_options, 'instance_name', 'default'),
+            enable_cache = enable_cache,
+            cache_limit_gb = cache_limit_gb,
+            cache_limit_hours = cache_limit_hours
         )
 
         # Initialize PubSubService with routing service
@@ -142,12 +153,14 @@ class Router(BaseRouter):
         )
         # Federation tracking
         self.federation_service = None
-        if server_options.enable_federation and server_options.federation_url:
+        if enable_federation:
+            from volttron.messagebus.zmq.routing.federation_service import FederationService
             self.federation_service = FederationService(
                 options=server_options,
                 auth_service=self._auth_service,
                 routing_service=self._routing_service,
-                messagebus=self._message_bus
+                messagebus=self._message_bus,
+                enable_cache=enable_cache
             )
 
 
@@ -248,9 +261,9 @@ class Router(BaseRouter):
             # now we serialize frames and if user_id is always the sender and not
             # recipents.get('User-Id') or default user name
             if sender == CONTROL:
-                if self._routing_service:
-                    self._routing_service.close_external_connections()
-                self.stop()
+                self.shutdown()
+                # raise exception for router thread to catch and call
+                # messagebus shutdown handler
                 raise KeyboardInterrupt()
             else:
                 _log.error(f"Sender {sender} not authorized to shutdown platform")
@@ -423,12 +436,9 @@ class Router(BaseRouter):
 
     def shutdown(self):
         """Enhanced shutdown to clean up federation watcher"""
-        try:
-            if self.federation_service:
-                self.federation_service.shutdown()
-                _log.debug("Federation service stopped")
-        except Exception as e:
-            _log.error(f"Error stopping federation service: {e}")
-        
-        # Call parent shutdown
-        super().shutdown()
+        # First shutdown federation service then routing service as federation service calls routing service
+        if self.federation_service:
+            self.federation_service.shutdown()
+        if self._routing_service:
+            self._routing_service.shutdown()
+        self.stop()

@@ -68,7 +68,7 @@ class FederationService:
     """
 
     def __init__(self, options: ServerOptions, auth_service: AuthService, routing_service: RoutingService,
-                 messagebus: MessageBus, **kwargs):
+                 messagebus: MessageBus, enable_cache=True, **kwargs):
 
         self._options = options
         self._auth_service = auth_service
@@ -82,7 +82,7 @@ class FederationService:
         self._retry_period = DEFAULT_RETRY_PERIOD
         self._registry_connection_successful = False
         self._registry_last_attempt = 0
-
+        self._enable_cache = enable_cache
         # Load any existing federation configuration
         self._load_config()
 
@@ -242,6 +242,7 @@ class FederationService:
 
         # Save final state to configuration
         self._save_config()
+        _log.info("Completed shutdown of federation service")
 
     def register_with_federation(self, registry_url: str) -> bool:
         """
@@ -435,6 +436,7 @@ class FederationService:
             try:
                 if platform.connected:
                     self._routing_service.disconnect_external_instances(platform_id)
+                self.on_disconnect(platform.address)
             except Exception as e:
                 _log.error(f"Error disconnecting from platform {platform_id}: {e}")
 
@@ -587,19 +589,19 @@ class FederationService:
 
     def on_connect(self, server_address):
         """Handle server connection and spawn greenlet for publishing cached messages."""
+        if self._enable_cache:
+            if server_address in self.cache_publisher_greenlets:
+                # Kill existing greenlet (if any) before starting a new one
+                self.cache_publisher_greenlets[server_address].kill()
 
-        if server_address in self.cache_publisher_greenlets:
-            # Kill existing greenlet (if any) before starting a new one
-            self.cache_publisher_greenlets[server_address].kill()
-
-        # Spawn a greenlet to publish cached messages
-        _log.info(f"[FederationService] Spawning cache publisher for {server_address}")
-        stop_event = gevent.event.Event()
-        self.stop_events[server_address] = stop_event
-        greenlet = gevent.spawn(self._publish_messages_from_cache, server_address)
-        # Sleep so that spawned greenlet gets a turn
-        gevent.sleep(0.1)
-        self.cache_publisher_greenlets[server_address] = greenlet
+            # Spawn a greenlet to publish cached messages
+            _log.info(f"[FederationService] Spawning cache publisher for {server_address}")
+            stop_event = gevent.event.Event()
+            self.stop_events[server_address] = stop_event
+            greenlet = gevent.spawn(self._publish_messages_from_cache, server_address)
+            # Sleep so that spawned greenlet gets a turn
+            gevent.sleep(0.1)
+            self.cache_publisher_greenlets[server_address] = greenlet
 
     def _publish_messages_from_cache(self, server_address):
         """Publish messages from cache in batches and cleanly terminate."""
@@ -639,16 +641,19 @@ class FederationService:
             gevent.sleep(1)
 
     def on_temp_disconnect(self, server_address):
+        # If federation cache is disabled, self.stpop_events and self.cache_publisher_greenlets will be empty
         if server_address in self.stop_events:
             _log.info(f"[FederationService] Setting stop event for {server_address}")
             self.stop_events[server_address].set()
 
     def on_disconnect(self, server_address):
+       # If federation cache is disabled, self.stpop_events and self.cache_publisher_greenlets will be empty
         if server_address in self.stop_events:
             _log.info(f"[FederationService] Setting stop event for {server_address}")
             self.stop_events[server_address].set()
-        _log.info(f"[FederationService] Waiting for all cache publish greenlets to finish")
-        self.cache_publisher_greenlets[server_address].join()
+        if server_address in self.cache_publisher_greenlets:
+            _log.info(f"[FederationService] Waiting for all cache publish greenlets to finish")
+            self.cache_publisher_greenlets[server_address].join()
 
 
 class FederationConfigHandler(FileSystemEventHandler):
