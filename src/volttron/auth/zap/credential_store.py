@@ -111,7 +111,7 @@ class FileBasedCredentialStore(CredentialsStore):
     def _get_credentials_path(self, *, identity: str) -> Path:
         return self._credentials_repository / f"{identity}.json"
 
-    def store_credentials(self, *, credentials: Credentials) -> None:
+    def store_credentials(self, *, credentials: Credentials, overwrite=False) -> None:
         """
         Store credentials for an identity.
 
@@ -119,11 +119,11 @@ class FileBasedCredentialStore(CredentialsStore):
         :type identity: str
         :param credentials: The credentials to store.
         :type credentials: Credentials
-        :raises: IdentityAlreadyExists: If the identity alredy exists, an IdentityAlreadyExists exception MUST be raised.
+        :raises: IdentityAlreadyExists: If the identity already exists, an IdentityAlreadyExists exception MUST be raised.
         """
         path = self._get_credentials_path(identity=credentials.identity)
-        if path.exists():
-            raise IdentityAlreadyExists(credentials.identity)
+        if not overwrite and path.exists():
+            raise IdentityAlreadyExists(f"Identity file {credentials.identity} already exists")
         json_str = credentials.to_json()
         cfg = json.loads(json_str)
         path.open("wt").write(json_str)

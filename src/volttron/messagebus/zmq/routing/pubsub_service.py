@@ -79,7 +79,7 @@ class PubSubService:
             self._ext_router.register("on_disconnect", self.external_platform_drop)
         else:
             _log.error("Routing Service is None!")
-        
+
     def _add_peer_subscription(self, peer, bus, prefix, platform="internal"):
         """
         This maintains subscriptions for specified peer (subscriber), bus and prefix.
@@ -516,8 +516,10 @@ class PubSubService:
                     if self._ext_router is not None:
                         self._logger.debug("Sending to: {}".format(platform_id))
                         # Send the message to the external platform
-                        success = self._ext_router.send_external(platform_id, frames)
+                        self._ext_router.send_external(platform_id, frames)
                 except ZMQError as exc:
+                    # We don't seem to reach here if the external instance is down!
+                    self._logger.error(f"Sending to: {platform_id} FAILURE")
                     try:
                         errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
                     except KeyError:
@@ -541,10 +543,13 @@ class PubSubService:
                         except ZMQError as exc:
                             # raise
                             pass
-                    # If external platform is unreachable, drop the all subscriptions
                     if exc.errno == EHOSTUNREACH:
-                        self._logger.debug("Host not reachable: {}".format(platform_id))
-                        # self.external_platform_drop(platform_id)
+                        self._logger.info("Host not reachable: {}".format(platform_id))
+                        # do not drop subscriptions here.
+                        # on disconnect or on temp disconnect handler is called based on whether
+                        # federation cache is enabled. If no cache is enabled, the registered
+                        # on_disconnect method (i.e. external_platform_drop) is called. so no need
+                        # to call here explicitly
                     else:
                         raise
         return len(external_subscribers)
@@ -857,8 +862,8 @@ class PubSubService:
                     ]
                     self._ext_router.send_external(publisher, frames)
                     return
-                except ValueError:
-                    self._logger.debug("Value error")
+                except ValueError as v:
+                    self._logger.error(f"Value error {v}")
 
             # Make it an internal publish
             frames[6] = "publish"
@@ -879,10 +884,10 @@ class PubSubService:
                         topic,
                     ]
                     self._ext_router.send_external(publisher, frames)
-                except ValueError:
-                    self._logger.debug("Value error")
+                except ValueError as v:
+                    self._logger.error(f"Value error {v}")
         else:
-            self._logger.debug("Incorrect frames {}".format(len(frames)))
+            self._logger.error("Incorrect frames {}".format(len(frames)))
         return subscribers_count
 
     def _handle_error(self, frames):

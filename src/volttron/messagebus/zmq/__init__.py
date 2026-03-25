@@ -52,8 +52,6 @@ import threading
 from typing import Optional
 
 from volttron.messagebus.zmq.config import ZmqMessageBusConfig
-from volttron.messagebus.zmq.federation_bridge import ZmqFederationBridge
-from volttron.types.federation import FederationBridge
 import zmq.green as zmq
 from volttron.messagebus.zmq.router import Router
 from volttron.messagebus.zmq.zmq_connection import ZmqConnection
@@ -100,13 +98,15 @@ def zmq_router(server_options: ServerOptions,
         )
         router.run()
     except Exception as ex:
-        _log.error("Unhandled exceeption from router thread.")
+        _log.error("Unhandled exception from router thread.")
         _log.exception(ex)
         raise
     except KeyboardInterrupt:
+        # we raise this when we get "quit" message - i.e. shutdown
+        _log.error("keyboard interrupt exception from router thread.")
         pass
     finally:
-        _log.debug("In finally")
+        # has to be called from here to kill core greenlets and exit volttron process
         if stop_handler is not None:
             stop_handler.message_bus_shutdown()
 
@@ -134,7 +134,7 @@ class ZmqMessageBus(MessageBus):
         #     self._secretkey = creds.secretkey
 
         self._server_options = server_options
-        self._config = self._server_options.get_messagebus_config()
+        #self._config = self._server_options.get_messagebus_config()
         self._auth_service = auth_service
         #self._opts = opts
         self._notifier = notifier
@@ -143,7 +143,6 @@ class ZmqMessageBus(MessageBus):
         #self._external_address_file = external_address_file
         #self._stop = stop
         self._thread = None
-        self._federation_bridge: FederationBridge | None = None
 
         from queue import Queue
         self._router_task_queue = Queue()
@@ -186,29 +185,7 @@ class ZmqMessageBus(MessageBus):
     def stop(self):
         if self._stop_handler is not None:
             self._stop_handler.message_bus_shutdown()
-    
-    def create_federation_bridge(self) -> Optional[FederationBridge]:
-        """
-        Create a federation bridge for this message bus.
-        
-        :return: A ZmqFederationBridge instance or None if federation is disabled
-        :rtype: Optional[FederationBridge]
-        """
-        if not self._config:
-            return None
-            
-        # Check if federation is enabled in config
-        messagebus_config = getattr(self._config, 'messagebus_config', {})
-        if not messagebus_config.get("enable_federation", False):
-            return None
-        
-        # Verify thread safety is working
-        self._check_thread_safety()
-            
-        if self._federation_bridge is None:
-            self._federation_bridge = ZmqFederationBridge(self)
-            
-        return self._federation_bridge
+
 
     def execute_in_router_thread(self, fn, timeout=5):
         """
