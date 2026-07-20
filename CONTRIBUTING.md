@@ -1,144 +1,77 @@
-# Contributing
+Contributor License
+-------------------
 
-Contributions are welcome, and they are greatly appreciated!
-Every little bit helps, and credit will always be given.
+VOLTTRON is an Eclipse Foundation project.  If this is your first time contributing to an Eclipse Foundation project, you'll need to sign the [Eclipse Contributor Agreement][ECA].
 
-!!! note
-   It is required to fill out the **Eclipse Contributor Agreement** form to contribute in Eclipse Foundation projects.
-   For more information and complete the acknowledgment of  **Eclipse Contributor Agreement**,
-   please see [Eclipse Contributor Agreement](https://www.eclipse.org/legal/ECA.php).
+- [Create an account](https://dev.eclipse.org/site_login/createaccount.php) on dev.eclipse.org
+- Open your [Account Settings tab](https://dev.eclipse.org/site_login/myaccount.php#open_tab_accountsettings)
+  - Edit your profile 
 
-## Environment setup
+    ![edit profile](https://user-images.githubusercontent.com/3979063/180067976-f1a19112-0627-44eb-a18c-983322d5dc93.png) 
+    
+    enter your GitHub ID under the "Social Media Links" section and click save.
+- Read and sign the Eclipse Contributor Agreement
 
-Nothing easier!
+  ![eclipse-eca](https://user-images.githubusercontent.com/3979063/180068087-49f6ff56-82f6-4bd5-b203-1fb4eb12abba.png)
+- Use the exact same email address for your Eclipse account and your commit author.
 
-Fork and clone the repository, then:
+Issues
+------
 
-```bash
-cd [[ repository_name ]]
-make setup
-```
+Search the [issue tracker](https://github.com/volttron/volttron-core/issues) for a relevant issue or create a new one.
 
-!!! note
-    If it fails for some reason,
-    you'll need to install
-    [Poetry](https://github.com/python-poetry/poetry)
-    manually.
+Making changes
+--------------
 
-    You can install it with:
+Fork the repository in GitHub and make changes in your fork.
 
-    ```bash
-    python3 -m pip install --user pipx
-    pipx install poetry
-    ```
+Submit a pull request.
 
-    Now you can try running `make setup` again,
-    or simply `poetry install`.
+Contact us
+----------
 
-You now have the dependencies installed.
+[Join the mailing list][mailing-list] or email volttron@pnnl.gov to discuss your ideas and get help.
 
-You can run the application with `poetry run [[ python_package_command_line_name ]] [ARGS...]`.
+Semantic Versioning
+-------------------
 
-Run `make help` to see all the available actions!
+VOLTTRON version numbers follow [Semantic Versioning][semver]. This means we increment the major version when we make incompatible API changes. This includes any changes which:
 
-## Tasks
+- break source compatibility (i.e. changing a function such that current code breaks)
+- break serialization compatibility (i.e. changing the VIP protocol over the message bus.)
 
-This project uses [duty](https://github.com/pawamoy/duty) to run tasks.
-A Makefile is also provided. The Makefile will try to run certain tasks
-on multiple Python versions. If for some reason you don't want to run the task
-on multiple Python versions, you can do one of the following:
+Commit messages
+---------------
 
-1. `export PYTHON_VERSIONS= `: this will run the task
-   with only the current Python version
-2. run the task directly with `poetry run duty TASK`,
-   or `duty TASK` if the environment was already activated
-   through `poetry shell`
+- [Use the imperative mood][imperative-mood] as in "Fix bug" or "Add feature" rather than "Fixed bug" or "Added feature"
+- [Mention the GitHub issue][github-issue] when relevant
+- It's a good idea to follow the [advice in Pro Git](https://git-scm.com/book/ch5-2.html)
+- [Good commit messages][good-commit] are critical for maintainability of the project. 
 
-The Makefile detects if the Poetry environment is activated,
-so `make` will work the same with the virtualenv activated or not.
+Pull requests
+-------------
 
-## Development
+Excessive branching and merging can make git history confusing. With that in mind
 
-As usual:
+- [Squash your commits down to a few commits][squash], or one commit, before submitting a pull request
+- [Rebase your pull request changes on top of the current main][rebase]. Pull requests shouldn't include merge commits.
 
-1. create a new branch: `git checkout -b feature-or-bugfix-name`
-1. edit the code and/or the documentation
+Submit your pull request when ready. Three checks will be kicked off automatically.
 
-If you updated the documentation or the project dependencies:
+- IP Validation: Checks that all committers signed the Eclipse CLA and signed their commits.
+- Continuous integration: [GitHub Actions][github-actions] that run pytests and CodeQL.
+- The standard GitHub check that the pull request has no conflicts with the base branch.
 
-1. run `make docs-regen`
-1. run `make docs-serve`,
-   go to http://localhost:8000 and check that everything looks good
+Make sure all the checks pass. One of the committers will take a look and provide feedback or merge your contribution.
 
-**Before committing:**
+That's it! Thanks for contributing to VOLTTRON!
 
-1. run `make format` to auto-format the code
-1. run `make check` to check everything (fix any warning)
-1. run `make test` to run the tests (fix any issue)
-1. follow our [commit message convention](#commit-message-convention)
-
-If you are unsure about how to fix or ignore a warning,
-just let the continuous integration fail,
-and we will help you during review.
-
-Don't bother updating the changelog, we will take care of this.
-
-## Commit message convention
-
-Commits messages must follow the
-[Angular style](https://gist.github.com/stephenparish/9941e89d80e2bc58a153#format-of-the-commit-message):
-
-```
-<type>[(scope)]: Subject
-
-[Body]
-```
-
-Scope and body are optional. Type can be:
-
-- `build`: About packaging, building wheels, etc.
-- `chore`: About packaging or repo/files management.
-- `ci`: About Continuous Integration.
-- `docs`: About documentation.
-- `feat`: New feature.
-- `fix`: Bug fix.
-- `perf`: About performance.
-- `refactor`: Changes which are not features nor bug fixes.
-- `style`: A change in code style/format.
-- `tests`: About tests.
-
-**Subject (and body) must be valid Markdown.**
-If you write a body, please add issues references at the end:
-
-```
-Body.
-
-References: #10, #11.
-Fixes #15.
-```
-
-## Pull requests guidelines
-
-Link to any related issue in the Pull Request message.
-
-During review, we recommend using fixups:
-
-```bash
-# SHA is the SHA of the commit you want to fix
-git commit --fixup=SHA
-```
-
-Once all the changes are approved, you can squash your commits:
-
-```bash
-git rebase -i --autosquash master
-```
-
-And force-push:
-
-```bash
-git push -f
-```
-
-If this seems all too complicated, you can push or force-push each new commit,
-and we will squash them ourselves if needed, before merging.
+[ECA]:             https://www.eclipse.org/legal/ECA.php
+[semver]:          http://semver.org/
+[squash]:          https://medium.com/@slamflipstrom/a-beginners-guide-to-squashing-commits-with-git-rebase-8185cf6e62ec
+[rebase]:          https://github.com/edx/edx-platform/wiki/How-to-Rebase-a-Pull-Request
+[github-actions]:  https://github.com/eclipse-volttron/volttron-core/actions
+[imperative-mood]: https://github.com/git/git/blob/master/Documentation/SubmittingPatches
+[github-issue]:    https://help.github.com/articles/closing-issues-via-commit-messages/
+[good-commit]:     https://cbea.ms/git-commit/
+[mailing-list]:    https://accounts.eclipse.org/mailing-list/volttron-dev
