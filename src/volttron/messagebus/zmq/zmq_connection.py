@@ -84,8 +84,17 @@ class ZmqConnection(Connection):
     # def connect(self):
     #     self.open_connection(type=zmq.DEALER)
 
-    def disconnect(self):
-        self.close_connection()
+    def disconnect(self, linger=0):
+        """Stop the monitor, close the socket, and clear the socket reference."""
+        try:
+            if self._socket is not None:
+                self._socket.monitor(None, 0)
+        except Exception:
+            pass
+        try:
+            self.close_connection(linger)
+        except Exception:
+            pass
         self._socket = None
 
     def is_connected(self) -> bool:
@@ -191,9 +200,6 @@ class ZmqConnection(Connection):
             obj.args = deserialize_frames(obj.args)
 
         return obj
-
-    def disconnect(self):
-        self._socket.disconnect(self._url)
 
     def close_connection(self, linger=5):
         """This method closes ZeroMQ socket"""

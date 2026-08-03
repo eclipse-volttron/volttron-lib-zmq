@@ -66,6 +66,20 @@ class ZapAuthenticator(Authenticator):
     def is_authenticated(self, *, identity: Identity) -> bool:
         return identity in self._authenticated
 
+    def stop(self) -> None:
+        """Kill the ZAP greenlet and close the inproc socket.
+
+        Must be called when the owning context is torn down (e.g. when a
+        PlatformWrapper shuts down) so that the next context can successfully
+        bind inproc://zeromq.zap.01 again.
+        """
+        if self._zap_greenlet is not None and not self._zap_greenlet.dead:
+            self._zap_greenlet.kill(block=True, timeout=2)
+        try:
+            self.zap_socket.close(linger=0)
+        except Exception:
+            pass
+
     # def authenticate(self, *, credentials: Credentials) -> bool:
     #     if self._options.auth_enabled:
     #         if not self._credentials_store.has_identity(credentials.identity):

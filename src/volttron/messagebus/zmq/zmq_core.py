@@ -29,19 +29,16 @@ from volttron.utils import jsonrpc
 
 _log = logging.getLogger(__name__)
 
-__connection_builders__: dict[str, ZmqConnectionBuilder] = {}
-__agent_contexts__: dict[str, AgentContext] = {}
-
-
 @connection_builder
 class ZmqConnectionBuilder(ConnectionBuilder):
 
-    def __init__(self, address: str):
+    def __init__(self, address: str, agent_contexts: dict):
         self._address = address
+        self._agent_contexts = agent_contexts
 
     def build(self, credentials: Credentials) -> Connection:
 
-        context: AgentContext = __agent_contexts__.get(credentials.identity)
+        context: AgentContext = self._agent_contexts.get(credentials.identity)
 
         # Not an internal address
         if not self._address.startswith("inproc") and hasattr(credentials, "publickey"):
@@ -66,8 +63,12 @@ class ZmqConnectionBuilder(ConnectionBuilder):
 @core_builder
 class ZmqCoreBuilder(CoreBuilder):
 
+    def __init__(self):
+        self._agent_contexts: dict[str, AgentContext] = {}
+        self._connection_builders: dict[str, ZmqConnectionBuilder] = {}
+
     def build(self, *, context: AgentContext, owner: AbstractAgent = None) -> CoreLoop:
-        __agent_contexts__[context.credentials.identity] = context
+        self._agent_contexts[context.credentials.identity] = context
         opts = context.options
 
         try:
@@ -86,7 +87,9 @@ class ZmqCoreBuilder(CoreBuilder):
                        address=context.address,
                        reconnect_interval=opts.reconnect_interval,
                        agent_uuid=opts.agent_uuid,
-                       server_credentials=server_creds)
+                       server_credentials=server_creds,
+                       agent_contexts=self._agent_contexts,
+                       connection_builders=self._connection_builders)
 
 
 class ZmqCore(Core):
@@ -101,17 +104,23 @@ class ZmqCore(Core):
                  identity: str = None,
                  reconnect_interval: int = None,
                  server_credentials: Credentials = None,
-                 agent_uuid: str = None):
+                 agent_uuid: str = None,
+                 agent_contexts: dict = None,
+                 connection_builders: dict = None):
         if credentials is None and identity is None:
             identity = str(uuid.uuid4())
         elif credentials:
             identity = credentials.identity
         # address = "inproc://vip"
         # _log.error(f"ADDRESS hard coded to {address}")
-        builder = __connection_builders__.get(address)
+        if connection_builders is None:
+            connection_builders = {}
+        if agent_contexts is None:
+            agent_contexts = {}
+        builder = connection_builders.get(address)
         if not builder:
-            builder = ZmqConnectionBuilder(address=address)
-            __connection_builders__[address] = builder
+            builder = ZmqConnectionBuilder(address=address, agent_contexts=agent_contexts)
+            connection_builders[address] = builder
         super().__init__(owner=owner, credentials=credentials, connection_factory=builder)
 
         if credentials is None and server_credentials is not None or \
@@ -416,13 +425,8 @@ class ZmqCore(Core):
         # pre-finish
         try:
             self.connection.disconnect()
-            self._socket.monitor(None, 0)
-            self.connection.close_connection(1)
-        except AttributeError:
-            pass
-        except ZMQError as exc:
-            if exc.errno != ENOENT:
-                _log.exception("disconnect error")
+        except Exception:
+            _log.exception("Error during disconnect for %s", self.identity)
         finally:
             self._socket = None
         yield
