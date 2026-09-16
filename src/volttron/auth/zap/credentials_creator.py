@@ -15,10 +15,17 @@ class VolttronCredentialsCreator(CredentialsCreator):
         name = "zmq"
 
     def create(self, identity: str, **kwargs) -> Credentials:
-        public, secret = _zmq.curve_keypair()
-        public, secret = map(encode_key, (public, secret))
         domain = kwargs.pop('domain', '')
         address = kwargs.pop('address', '')
+        publickey = kwargs.pop('publickey', None)
+
+        # If publickey is provided, use it; otherwise generate new keypair
+        if publickey is not None:
+            public = publickey
+            secret = None
+        else:
+            public, secret = _zmq.curve_keypair()
+            public, secret = map(encode_key, (public, secret))
 
         if len(kwargs) > 0:
             raise ValueError(f"Unkown kwargs: {kwargs.keys()}")
