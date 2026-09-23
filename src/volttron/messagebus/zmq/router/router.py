@@ -175,7 +175,6 @@ class Router(BaseRouter):
         )
         # Federation tracking
         self.federation_service = None
-        self.federation_cache = enable_cache
         if enable_federation:
             from volttron.messagebus.zmq.routing.federation_service import FederationService
             self.federation_service = FederationService(

@@ -531,24 +531,24 @@ class RoutingService(object):
             if platform_id in self._instances:
                 _log.warning(f"Platform {platform_id} already exists, skipping add")
                 return False
-                
+
             # Create instance_info in the format expected by _build_connection
             instance_info = {
                 'instance-name': platform_id,
                 'serverkey': public_key,
                 'vip-address': address
             }
-            
+
             # Use existing _build_connection method
             self._build_connection(instance_info, our_credentials=our_credentials)
-            
+
             _log.info(f"External route added for platform: {platform_id}")
             return True
-            
+
         except Exception as e:
             _log.error(f"Failed to add external route for {platform_id}: {e}")
             return False
-    
+
     def remove_external_route(self, platform_id: str) -> bool:
         """
         Remove an external route for federation
@@ -559,18 +559,18 @@ class RoutingService(object):
             if platform_id not in self._instances:
                 _log.warning(f"Platform {platform_id} not found, nothing to remove")
                 return False
-                
+
             # Disconnect the external instance
             self.disconnect_external_instances(platform_id)
-            
+
             # Clean up routing table entry
             if platform_id in self._routing_table:
                 del self._routing_table[platform_id]
-                
+
             # Remove from instances tracking
             if platform_id in self._instances:
                 instance_info = self._instances[platform_id]
-                
+
                 # Unregister sockets from poller
                 if 'socket' in instance_info:
                     sock = instance_info['socket']
@@ -578,39 +578,39 @@ class RoutingService(object):
                         self._poller.unregister(sock)
                         self._vip_sockets.remove(sock)
                         sock.close()
-                        
+
                 if 'monitor_socket' in instance_info:
                     mon_sock = instance_info['monitor_socket']
                     if mon_sock in self._monitor_sockets:
                         self._poller.unregister(mon_sock)
                         self._monitor_sockets.remove(mon_sock)
                         mon_sock.close()
-                
+
                 # Clean up identity mapping
                 platform_identity = instance_info.get('platform_identity')
                 if platform_identity in self._socket_identities:
                     del self._socket_identities[platform_identity]
-                    
+
                 del self._instances[platform_id]
-            
+
             _log.info(f"External route removed for platform: {platform_id}")
             return True
-            
+
         except Exception as e:
             _log.error(f"Failed to remove external route for {platform_id}: {e}")
             return False
-    
+
     def refresh_external_route(self, platform_id: str, address: str, public_key: str) -> bool:
         """
         Refresh an external route (remove and re-add)
         :param platform_id: Unique identifier for the external platform
-        :param address: VIP address of the external platform  
+        :param address: VIP address of the external platform
         :param public_key: Public key for authentication
         :return: True if connection was successfully refreshed
         """
         self.remove_external_route(platform_id)
         return self.add_external_route(platform_id, address, public_key)
-    
+
     def get_external_route_status(self, platform_id: str) -> str | None:
         """
         Get the status of an external route
@@ -620,7 +620,7 @@ class RoutingService(object):
         if platform_id in self._instances:
             return self._instances[platform_id].get('status')
         return None
-    
+
     def shutdown(self):
         """
         Shutdown the routing service and cleanup all connections
@@ -642,16 +642,16 @@ class RoutingService(object):
                     mon_sock.close()
                 except Exception as e:
                     _log.error(f"Error closing monitor socket: {e}")
-            
-            # Close all VIP sockets  
+
+            # Close all VIP sockets
             for sock in list(self._vip_sockets):
                 try:
                     self._poller.unregister(sock)
                     sock.close()
                 except Exception as e:
                     _log.error(f"Error closing VIP socket: {e}")
-                    
+
             _log.info("RoutingService shutdown complete")
-            
+
         except Exception as e:
             _log.error(f"Error during RoutingService shutdown: {e}")
