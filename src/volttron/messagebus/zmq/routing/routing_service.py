@@ -194,7 +194,7 @@ class RoutingService(object):
             _log.error("Missing parameter in instance info message {}".format(exc))
             return
 
-        sock = zmq.Socket(zmq.Context(), zmq.DEALER)
+        sock = self._socket_class(self._context, zmq.DEALER)
         num = random.random()
         # socket identity and zap domain must be bytes
         sock.identity = f"instance.{instance_name}.{num}".encode("utf-8")
@@ -233,7 +233,7 @@ class RoutingService(object):
         if address in self._my_addr:
             _log.debug("Same instance: {}".format(address))
             return
-        sock = zmq.Socket(zmq.Context(), zmq.DEALER)
+        sock = self._socket_class(self._context, zmq.DEALER)
         sock.sndtimeo = 0
         sock.tcp_keepalive = True
         sock.tcp_keepalive_idle = 180
