@@ -53,6 +53,13 @@ _ROUTE_ERRORS = {
     for errnum in [zmq.EHOSTUNREACH, zmq.EAGAIN]
 }
 
+# Bounded, short cooperative waits (in ms) used by _send_to_socket to retry a
+# send that hit EAGAIN (send buffer momentarily full) before giving up and
+# letting the caller fall back to caching + async replay. Kept intentionally
+# small (a few ms total) so a persistent backlog doesn't stall the router
+# loop - see _send_to_socket for details.
+_EAGAIN_RETRY_WAITS_MS = [2, 5, 15]
+
 
 _log = logging.getLogger(__name__)
 
@@ -87,6 +94,15 @@ class RoutingService(object):
         self._on_connect_handlers = []
         self._on_disconnect_handlers = []
         self._on_temp_disconnect_handlers = []
+        # Separate from on_connect: fired when a send hits transient EAGAIN
+        # backpressure so the message got cached but the platform is still
+        # considered CONNECTED. This must NOT reuse on_connect, because
+        # on_connect also drives PubSubService.external_platform_add(), which
+        # resends the full subscription list - unnecessary (the peer never
+        # disconnected) and counterproductive (it adds more traffic onto a
+        # socket that just reported its buffer is full). Only
+        # FederationService's cache-replay greenlet needs to know about this.
+        self._on_cache_replay_needed_handlers = []
         self._vip_sockets = set()
         self._monitor_sockets = set()
         self._socket_identities = dict()
@@ -303,12 +319,23 @@ class RoutingService(object):
             ]
 
             if event & zmq.EVENT_CONNECTED:
+                # NOTE: This is only a TCP-level connection event. It does NOT
+                # guarantee that the remote VIP router is actually up and able
+                # to process messages (e.g. libzmq's automatic reconnect logic
+                # can report EVENT_CONNECTED on a transient/half-open TCP
+                # connection even while the remote platform is still down).
+                # Treating this as "platform reachable" previously caused
+                # send_external() to stop caching and attempt direct sends to
+                # a peer that wasn't really ready, silently losing messages.
+                # The authoritative signal that the remote platform is truly
+                # reachable is the VIP-level hello/welcome handshake handled in
+                # handle_subsystem(), which is what sets STATUS_CONNECTED and
+                # fires on_connect handlers. Here we just log the transport
+                # event for visibility.
                 _log.debug(
-                    "CONNECTED to external platform: {}!! Sending MY subscriptions !!".format(
+                    "Transport-level CONNECTED to external platform: {}. "
+                    "Waiting for VIP hello/welcome handshake before treating as reachable.".format(
                         instance_name[0]))
-                self._instances[instance_name[0]]["status"] = STATUS_CONNECTED
-                for handler in self._on_connect_handlers:
-                    handler(instance_name[0])
             elif event & zmq.EVENT_CONNECT_DELAYED:
                 # _log.info("ROUTINGSERVICE socket DELAYED...Lets wait")
                 self._instances[instance_name[0]]["status"] = STATUS_CONNECTION_DELAY
@@ -352,6 +379,11 @@ class RoutingService(object):
             # for example temp network glitch don't remove subscription but notify to cache message, temp suspend
             # cache replay
             self._on_temp_disconnect_handlers.append(handler)
+        elif type == "on_cache_replay_needed":
+            # Fired on transient EAGAIN backpressure (platform stays CONNECTED,
+            # message was cached). Intentionally distinct from on_connect - see
+            # comment at self._on_cache_replay_needed_handlers definition.
+            self._on_cache_replay_needed_handlers.append(handler)
 
     def my_instance_name(self):
         """
@@ -414,18 +446,70 @@ class RoutingService(object):
         try:
             instance_info = self._instances[instance_name]
             d_frames = deserialize_frames(frames)
-            if (d_frames[5] != "hello" and
+            is_hello = d_frames[5] == "hello"
+            if (not is_hello and
                     self._instances[instance_name]["status"] != STATUS_CONNECTED):
                 _log.debug(f"Disconnected platform: {instance_name} caching instead")
-                self.message_cache.write_to_cache(instance_name, json.dumps(frames))
+                if self.message_cache:
+                    self.message_cache.write_to_cache(instance_name, json.dumps(frames))
                 return False
             try:
                 # Send using external socket
                 success = self._send_to_socket(instance_info["socket"], frames)
+                is_transient_backpressure = False
 
             except ZMQError as exc:
-                _log.error("Could not send to {} using new socket".format(instance_name))
+                _log.error("Could not send to {} using new socket: {}".format(instance_name, exc))
                 success = False
+                # EAGAIN (from a NOBLOCK send) means the outbound high-water-mark
+                # buffer for this peer is momentarily full - it is transient
+                # backpressure, NOT evidence that the platform is unreachable.
+                # The TCP connection is still up; there was simply no room to
+                # queue this message right now. Treating this the same as a
+                # genuine disconnect (EHOSTUNREACH or any other ZMQ error) would
+                # wrongly flip status to DISCONNECTED with no way back: status
+                # only returns to CONNECTED via the VIP hello/welcome handshake,
+                # which only happens after a real socket-level reconnect. If the
+                # connection never actually dropped, no reconnect event will
+                # ever come, so status - and therefore every subsequent message
+                # for this platform - would be stuck caching forever.
+                is_transient_backpressure = (exc.errno == EAGAIN)
+
+            if not success:
+                if is_hello:
+                    pass
+                elif is_transient_backpressure:
+                    # Leave status as CONNECTED - the platform is still
+                    # reachable, we just couldn't queue this one message right
+                    # now. Cache it so it isn't lost, then proactively nudge a
+                    # cache-replay attempt via a dedicated hook (NOT
+                    # on_connect - that also drives PubSubService's
+                    # subscription resync, which is unwarranted here and would
+                    # add more traffic to an already-backed-up socket).
+                    # Dispatch via gevent.spawn rather than calling handlers
+                    # synchronously, since we are already inside send_external;
+                    # a direct call could re-enter send_external if the
+                    # handler itself sends (e.g. replay), risking recursion
+                    # under sustained backpressure.
+                    _log.warning(
+                        f"Send to {instance_name} hit transient backpressure (EAGAIN); "
+                        f"caching message and nudging cache replay without marking platform disconnected.")
+                    if self.message_cache:
+                        self.message_cache.write_to_cache(instance_name, json.dumps(frames))
+                    for handler in self._on_cache_replay_needed_handlers:
+                        gevent.spawn(handler, instance_name)
+                else:
+                    # Genuine failure (e.g. EHOSTUNREACH, or any other ZMQ
+                    # error): fall back to caching the message and mark the
+                    # instance as disconnected so subsequent traffic is cached
+                    # too, until the VIP hello/welcome handshake reconfirms real
+                    # connectivity.
+                    self._instances[instance_name]["status"] = STATUS_DISCONNECTED
+                    if self.message_cache:
+                        _log.warning(
+                            f"Send to {instance_name} failed after being marked connected; "
+                            f"caching message instead of dropping it.")
+                        self.message_cache.write_to_cache(instance_name, json.dumps(frames))
             # if not success:
             #     #Try sending through router socket
             #     if bytes(frames[0]) == b'' and instance_info['status'] == STATUS_CONNECTING:
@@ -452,31 +536,45 @@ class RoutingService(object):
         have to be true frames.  This function will call `volttron.utils/.rame_serialization.serialize_frames``
         on the list of frames before sending the data.
 
+        On EAGAIN (send buffer momentarily full), makes a couple of very short,
+        bounded, cooperative attempts to wait for POLLOUT readiness and retry
+        before giving up. Because sock is a zmq.green socket, sock.poll() yields
+        to this thread's gevent hub instead of blocking it - so other sockets
+        and greenlets (including the local router socket's own message drain)
+        still get scheduled while we wait. This is intentionally bounded to a
+        few milliseconds total: it only helps with genuinely brief blips (e.g.
+        two publishes landing back-to-back); if the backpressure hasn't
+        cleared by then the caller falls back to caching + async replay rather
+        than blocking the router loop any longer.
+
         :param sock: zmq.Socket
         :param frames:
             A list of frames or data to be sent through a zmq socket.
         :return:
             bool - True if frames were successfully sent.
         """
-        success = True
+        frames = serialize_frames(frames)
 
-        try:
-            frames = serialize_frames(frames)
-            #_log.debug(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
-            # Try sending the message to its recipient
-            sock.send_multipart(frames, flags=NOBLOCK, copy=False)
-        except ZMQError as exc:
+        # Total attempts: 1 initial send + up to len(_EAGAIN_RETRY_WAITS_MS) retries.
+        for attempt, wait_ms in enumerate([0] + _EAGAIN_RETRY_WAITS_MS):
+            if attempt > 0:
+                # Wait (cooperatively) up to wait_ms for the socket to become
+                # writable again before retrying the send.
+                sock.poll(wait_ms, zmq.POLLOUT)
             try:
-                errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
-            except KeyError:
-                success = False
-                error = None
-                #_log.error(f"{'x' * 100}Key Error")
-            if exc.errno == EHOSTUNREACH or exc.errno == EAGAIN:
-                success = False
-                #_log.error(f"{'x' * 100}Unreachable host or EAGAIN")
-                raise
-        return success
+                #_log.debug(f"{'x' * 100}Frames sent to external {[x.bytes for x in frames]}")
+                # Try sending the message to its recipient
+                sock.send_multipart(frames, flags=NOBLOCK, copy=False)
+                return True
+            except ZMQError as exc:
+                if exc.errno != EAGAIN:
+                    # Not a transient-backpressure error - let the caller
+                    # handle it (e.g. EHOSTUNREACH is treated as a real
+                    # disconnect).
+                    raise
+                # Transient backpressure - retry after the next poll() wait.
+                continue
+        return False
 
     def _update_entry(self, frames):
         """

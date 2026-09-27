@@ -95,6 +95,13 @@ class FederationService:
         self._routing_service.register("on_connect", self.on_connect)
         self._routing_service.register("on_temp_disconnect", self.on_temp_disconnect)
         self._routing_service.register("on_disconnect", self.on_disconnect)
+        # Separate hook fired on transient EAGAIN backpressure (platform
+        # remains CONNECTED). Reuses on_connect() since it is idempotent -
+        # only (re)spawns the cache publisher greenlet if one isn't already
+        # running - but is registered independently from "on_connect" so that
+        # PubSubService's subscription resync (also driven by "on_connect")
+        # does not get triggered by a mere backpressure blip.
+        self._routing_service.register("on_cache_replay_needed", self.on_connect)
         # Register self with platform look up service and periodically poll for changes in federated volttron instances
         self._start_federation()
 
@@ -588,11 +595,28 @@ class FederationService:
             print(f"Function: {frame.function}, File: {frame.filename}, Line: {frame.lineno}")
 
     def on_connect(self, server_address):
-        """Handle server connection and spawn greenlet for publishing cached messages."""
+        """Handle server connection and spawn greenlet for publishing cached messages.
+
+        Safe to call repeatedly/redundantly for the same server_address.
+        Example:
+        1. It can be invoked by a genuine reconnect
+        2. Can be called using  on_cache_replay_needed event from
+        RoutingService.send_external() after transient EAGAIN backpressure. EAGAIN could happens both replay greenlet
+        is already alive or when there was no live replay greenlet (say there was never a true disconnect event for
+        the external instance)
+
+        If a cache publisher greenlet is already alive for this address, it is left
+        alone - it already reads from the cache in a loop until empty, so it
+        will naturally pick up any newly cached message. Only spawn a new one if
+        there isn't one running, avoiding thrashing (repeated kill + 10s startup
+        delay) on bursts of on_cache_replay_needed
+        """
         if self._enable_cache:
-            if server_address in self.cache_publisher_greenlets:
-                # Kill existing greenlet (if any) before starting a new one
-                self.cache_publisher_greenlets[server_address].kill()
+            existing = self.cache_publisher_greenlets.get(server_address)
+            if existing is not None and not existing.dead:
+                _log.debug(f"[FederationService] Cache publisher already running for {server_address}; "
+                           f"not spawning another one.")
+                return
 
             # Spawn a greenlet to publish cached messages
             _log.info(f"[FederationService] Spawning cache publisher for {server_address}")
@@ -625,17 +649,46 @@ class FederationService:
             # Simulate publishing messages (using Router's send_message method)
             _log.debug(f"[FederationService] Publishing {len(messages)} messages to {server_address}")
             delete_from_cache = []
+            stopped = False
             for message, cached_time in messages:
                 frames: list = json.loads(message)
                 msg = frames[-1]
                 msg["headers"]["CACHED_TIMESTAMP"] = cached_time
-                self._routing_service.send_external(server_address, frames)
-                delete_from_cache.append(cached_time)
+                success = self._routing_service.send_external(server_address, frames)
+                if success:
+                    # Only remove messages from the cache once we know they were
+                    # actually delivered.
+                    delete_from_cache.append(cached_time)
+                else:
+                    # Send failed (platform disconnected again mid-replay, or
+                    # still hitting backpressure). Leave this message and
+                    # everything after it in the cache (preserving order) and
+                    # stop processing the rest of this batch. We do NOT
+                    # terminate the greenlet here: loop back to the top of the
+                    # outer while loop instead. If this was a genuine
+                    # disconnect, the monitor socket's on_temp_disconnect/
+                    # on_disconnect handler will (asynchronously) set
+                    # stop_events for this server, and the check at the top of
+                    # the outer loop will catch it on the next iteration and
+                    # exit cleanly - no busy-spin risk. If it was transient,
+                    # the next iteration's read_from_cache will pick this same
+                    # message back up and retry it after the loop's normal
+                    # gevent.sleep(1) backoff.
+                    _log.warning(f"[FederationService] Failed to replay cached message to {server_address}; "
+                                 f"will retry remaining cached messages next iteration.")
+                    break
                 if self.stop_events[server_address].is_set():
                     _log.debug(f"[FederationService] stop event set for  {server_address}. exit replay loop.")
+                    stopped = True
                     break
-            # Delete published messages from cache
-            self._routing_service.message_cache.delete_from_cache(server_address, delete_from_cache)
+            # Delete only the successfully published messages from cache
+            if delete_from_cache:
+                self._routing_service.message_cache.delete_from_cache(server_address, delete_from_cache)
+
+            if stopped:
+                _log.debug(f"[FederationService] Terminating cache publisher for {server_address} "
+                           f"(stop event set).")
+                return
 
             # Yield control to other greenlets
             gevent.sleep(1)
