@@ -26,7 +26,6 @@ import logging
 import logging.config
 import os
 import re
-from os import access
 from typing import Literal
 
 import zmq
@@ -303,7 +302,7 @@ class PubSubService:
             except ValueError:
                 self._logger.error("JSON decode error. Invalid character")
                 return 0
-            
+
             return self._distribute(frames, user_id)
 
     def _peer_list(self, frames):
@@ -674,7 +673,7 @@ class PubSubService:
         """
         response = []
         result = None
-    
+
         try:
             sender, recipient, proto, usr_id, msg_id, subsystem, op = frames[:7]
         except (
