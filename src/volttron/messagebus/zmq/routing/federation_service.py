@@ -187,7 +187,7 @@ class FederationService:
             return False
 
         _log.debug(f"Attempting to register with federation registry at {self._registry_url}")
-        success = self.register_with_federation(self._registry_url)
+        success = self.register_with_federation(self._registry_url, self._options.federation_password)
 
         if success:
             _log.info("Successfully registered with federation registry")
@@ -228,7 +228,10 @@ class FederationService:
             try:
                 self._httpx_client.delete(
                     f"{self._registry_url}/platform/{self._options.instance_name}",
-                    headers={"accept": "application/json"}
+                    headers={
+                        "accept": "application/json",
+                        "Registration-Password": self._options.federation_password
+                    }
                 )
                 _log.info(f"Unregistered from federation registry at {self._registry_url}")
             except Exception as e:
@@ -244,10 +247,10 @@ class FederationService:
         self._save_config()
         _log.info("Completed shutdown of federation service")
 
-    def register_with_federation(self, registry_url: str) -> bool:
+    def register_with_federation(self, registry_url: str, federation_password: str) -> bool:
         """
         Register this platform with a federation registry.
-        
+
         :param registry_url: URL of the federation registry service
         :return: True if registration was successful
         """
@@ -295,14 +298,18 @@ class FederationService:
             "address": platform_address,
             "group": DEFAULT_GROUP,  # Default group can be customized
             "id": local_platform_id,
-            "public_credentials": public_credentials  # Match API field name
+            "public_credentials": public_credentials,  # Match API field name
         }
 
         try:
             # Post our platform to the registry
             response = self._httpx_client.post(
                 f"{registry_url}/platform",
-                headers={"accept": "application/json", "Content-Type": "application/json"},
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Registration-Password": federation_password
+                },
                 json=registration_data,
                 timeout=5.0  # Short timeout for responsiveness
             )
@@ -328,7 +335,7 @@ class FederationService:
         Discover platforms from platform lookup service, register remote platform credentials with
         local auth service(which  persists the remote server credentials in credential store), and save the remote
         platform details in federation config
-        
+
         :return: Number of platforms registered, -1 if error
         """
         if not self._registry_url:
@@ -339,7 +346,10 @@ class FederationService:
             # Get list of platforms from registry
             response = self._httpx_client.get(
                 f"{self._registry_url}/platforms",
-                headers={"accept": "application/json"},
+                headers={
+                    "accept": "application/json",
+                    "Registration-Password": self._options.federation_password
+                },
                 timeout=5.0  # Short timeout for responsiveness
             )
             response.raise_for_status()
