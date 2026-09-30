@@ -32,6 +32,7 @@ import uuid
 import gevent
 
 import zmq
+from zmq import green as _green
 from zmq import NOBLOCK, ZMQError
 
 
@@ -68,6 +69,15 @@ class FramesFormatter(object):
     __str__ = __repr__
 
 
+# Maximum number of messages to drain from a single ready socket during one
+# poll_sockets() iteration. Draining unboundedly (while a socket keeps having
+# messages ready) would starve other sockets - and the gevent hub, which is
+# what lets FederationService greenlets run - from getting a turn in the same
+# router thread. Bounding the batch keeps per-cycle latency low while still
+# giving a nice throughput win over handling exactly one message per poll().
+MAX_MESSAGES_PER_SOCKET_PER_CYCLE = 100
+
+
 class Router(BaseRouter):
     """Concrete VIP router."""
 
@@ -82,6 +92,18 @@ class Router(BaseRouter):
             message_bus: MessageBus | None = None
     ):
         from .. import ZmqMessageBus
+
+        # Use gevent-cooperative zmq primitives. The router runs in its own OS
+        # thread that also hosts greenlets spawned by services such as
+        # FederationService (registry polling, cache replay). Plain (blocking)
+        # pyzmq objects do not yield to that thread's gevent hub, which starves
+        # those greenlets and previously required an artificial gevent.sleep()
+        # after every poll() call in poll_sockets(), throttling all VIP message
+        # throughput. Using zmq.green here lets poll() cooperate with the hub
+        # naturally so that sleep is no longer necessary.
+        self._context_class = _green.Context
+        self._socket_class = _green.Socket
+        self._poller_class = _green.Poller
 
         super().__init__(
             context=zmq_context,
@@ -141,14 +163,14 @@ class Router(BaseRouter):
 
         # Initialize PubSubService with routing service
         self.pubsub = PubSubService(
-            socket=self.socket, 
-            auth_service=self._auth_service, 
+            socket=self.socket,
+            auth_service=self._auth_service,
             routing_service=self._routing_service
         )
 
         # Initialize ExternalRPCService
         self.ext_rpc = ExternalRPCService(
-            socket=self.socket, 
+            socket=self.socket,
             routing_service=self._routing_service
         )
         # Federation tracking
@@ -203,7 +225,7 @@ class Router(BaseRouter):
                 address.domain = "vip"
             address.bind(sock)
             _log.debug("Additional VIP router bound to %s" % address)
-        
+
         self.pubsub = PubSubService(self.socket, self._auth_service, self._routing_service) # ._protected_topics, self._ext_routing)
         self.ext_rpc =  None # ExternalRPCService(self.socket, self._ext_routing)
         self._poller.register(sock, zmq.POLLIN)
@@ -347,27 +369,44 @@ class Router(BaseRouter):
                 # block indefinitely
                 sockets = dict(self._poller.poll())
             else:
-                # Don't block indefinitely. Periodically yield to federation service
-                # so that it can reply cached messages if any
-                sockets = []
-                while not sockets:
-                    sockets = dict(self._poller.poll(timeout=10000))
-                    gevent.sleep(0.1)
+                # Use a bounded timeout so that if for some reason nothing is
+                # ready on the sockets we still periodically return control to
+                # the router loop. Because self.socket/self._poller are now
+                # gevent-cooperative (zmq.green), poll() itself yields to this
+                # thread's gevent hub while waiting, which is what actually
+                # lets FederationService's greenlets (registry loop, cache
+                # replay) run. No artificial gevent.sleep() is needed here -
+                # adding one would add fixed latency to every message routed
+                # through the platform.
+                sockets = dict(self._poller.poll(timeout=10000))
         except ZMQError as ex:
             _log.error("ZMQ Error while polling: {}".format(ex))
+            sockets = {}
 
         for sock in sockets:
             if sock == self.socket:
                 if sockets[sock] == zmq.POLLIN:
-                    frames = sock.recv_multipart(copy=False)
-                    if isinstance(frames[0], zmq.Frame):
-                        frames = deserialize_frames(frames)
-                    _log.debug(f"Routing frames {frames}")
-                    self.route(frames)
+                    # Drain up to MAX_MESSAGES_PER_SOCKET_PER_CYCLE queued
+                    # messages on the router socket instead of handling a
+                    # single message per poll() cycle. Under load this avoids
+                    # paying for a poll() round-trip per message, while the
+                    # bound ensures other ready sockets (and federation
+                    # greenlets) still get a turn each cycle.
+                    for _ in range(MAX_MESSAGES_PER_SOCKET_PER_CYCLE):
+                        frames = sock.recv_multipart(copy=False)
+                        if isinstance(frames[0], zmq.Frame):
+                            frames = deserialize_frames(frames)
+                        _log.debug(f"Routing frames {frames}")
+                        self.route(frames)
+                        if not sock.poll(0, zmq.POLLIN):
+                            break
             elif sock in self._routing_service._vip_sockets:
                 if sockets[sock] == zmq.POLLIN:
                     _log.debug("From Ext Socket: ")
-                    self.ext_route(sock)
+                    for _ in range(MAX_MESSAGES_PER_SOCKET_PER_CYCLE):
+                        self.ext_route(sock)
+                        if not sock.poll(0, zmq.POLLIN):
+                            break
             elif sock in self._routing_service._monitor_sockets:
                 self._routing_service.handle_monitor_event(sock)
             else:
