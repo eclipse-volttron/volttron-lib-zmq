@@ -564,7 +564,7 @@ class FederationService:
                 'group': group
             }
             self._federation_connections[platform_id] = connection_info
-            _log.info(f"Federation connection established to {platform_id} at {address}")
+            _log.info(f"#################FEDERATION CONNECTION ESTABLISHED to {platform_id} at {address}")
         else:
             _log.error(f"Failed to establish federation connection to {platform_id}")
 

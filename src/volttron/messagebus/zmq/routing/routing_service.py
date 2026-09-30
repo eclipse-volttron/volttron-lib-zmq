@@ -786,7 +786,7 @@ class RoutingService(object):
             # Use existing _build_connection method
             self._build_connection(instance_info, our_credentials=our_credentials)
 
-            _log.info(f"External route added for platform: {platform_id}")
+            _log.info(f"##################EXTERNAL ROUTE ADDED for platform: {platform_id}################")
             return True
 
         except Exception as e:
