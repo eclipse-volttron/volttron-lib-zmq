@@ -196,6 +196,7 @@ class PubSubService:
                 prefixes = [prefixes]
 
             is_all = msg.get("all_platforms", False)
+            bus = msg.get("bus", "")
 
             if is_all:
                 platform = "all"
@@ -211,7 +212,7 @@ class PubSubService:
                                                      msg_id=msg_id,
                                                      proto=proto)
                     return False
-                self._add_peer_subscription(subscriber, 'pubsub', prefix, platform)
+                self._add_peer_subscription(subscriber, bus, prefix, platform)
 
             self._logger.debug("Subscribe after: {}".format(self._peer_subscriptions))
             self._logger.debug(f"Is ext_router a thing? {self._ext_router}")
@@ -440,11 +441,11 @@ class PubSubService:
         subs = dict()
         # Get subscriptions for all platforms
         try:
-            all_subscriptions = self._peer_subscriptions["all"]['pubsub']
+            all_subscriptions = self._peer_subscriptions["all"][bus]
         except KeyError:
             pass
         try:
-            subscriptions = self._peer_subscriptions["internal"]['pubsub']
+            subscriptions = self._peer_subscriptions["internal"][bus]
         except KeyError:
             pass
 
