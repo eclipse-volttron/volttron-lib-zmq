@@ -62,6 +62,10 @@ class ZmqConnectionBuilder(ConnectionBuilder):
 
 @core_builder
 class ZmqCoreBuilder(CoreBuilder):
+    # The platform config's messagebus value this builder serves. volttron-core's get_core_builder() uses it to
+    # choose among several registered builders for an unnamed lookup (volttron-core#361). The registry name stays
+    # the class name, which callers pass as name='ZmqCoreBuilder'.
+    messagebus = "zmq"
 
     def __init__(self):
         self._agent_contexts: dict[str, AgentContext] = {}
