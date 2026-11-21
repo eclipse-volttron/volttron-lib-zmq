@@ -159,14 +159,21 @@ class ZmqCore(Core):
         _log.debug(f"AGENT RUNNING on ZMQ Core {self.identity}")
         _log.debug(f"keys: server: {self.serverkey} public: {self.publickey}, secret: {self.secretkey}")
         self._socket = None
+        # Whether the socket monitor has seen the link to the router go down (EVENT_DISCONNECTED, or reconnecting
+        # given up). Cleared when the link comes back (EVENT_CONNECTED) or the router answers a hello.
+        self._link_down = False
 
     def get_connected(self):
-        return super(ZmqCore, self).get_connected()
+        """Whether the agent has a socket and its link to the router is not known to be down.
+
+        Core's own ``connected`` only says that a socket exists, which stays true after the router has gone. Before
+        the first hello reply this is the same as Core's, so connecting is unaffected.
+        """
+        return super(ZmqCore, self).get_connected() and not self._link_down
 
     def set_connected(self, value):
-        # TODO pass through?  Do we need this here?
-        #super(ZmqCore, self).set_connected(value)
-        pass
+        """Record the link state. The socket monitor calls this; the socket itself is unaffected."""
+        self._link_down = not value
 
     connected = property(get_connected, set_connected)
 
@@ -306,6 +313,7 @@ class ZmqCore(Core):
                             self.onsockevent.send(self, **message)
                             event = message["event"]
                             if event & zmq.EVENT_CONNECTED:
+                                self.connected = True
                                 hello()
                             elif event & zmq.EVENT_DISCONNECTED:
                                 self.connected = False
@@ -388,6 +396,7 @@ class ZmqCore(Core):
                         and message.args[0] == "welcome"):
                     version, server, identity = message.args[1:4]
                     assert self._connection.connected
+                    self.connected = True
                     self.onconnected.send(self, version=version, router=server, identity=identity)
                     continue
 
