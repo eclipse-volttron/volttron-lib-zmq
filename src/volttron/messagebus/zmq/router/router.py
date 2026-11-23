@@ -139,7 +139,8 @@ class Router(BaseRouter):
         enable_cache = False  # currently cache is only for federation
         cache_limit_gb = None
         cache_limit_hours = None
-        if server_options.enable_federation and server_options.federation_url:
+        # federation_url (platform-lookup) is optional; without it peers come from federation_config.json
+        if server_options.enable_federation:
             enable_federation = True
             if server_options.enable_federation_cache:
                 enable_cache = True
