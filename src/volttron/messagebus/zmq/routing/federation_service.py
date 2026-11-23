@@ -86,7 +86,11 @@ class FederationService:
         # Load any existing federation configuration
         self._load_config()
 
-        self._registry_url = options.federation_url.split('#')[0]
+        # platform-lookup service is optional. Without it, peers are read from federation_config.json
+        self._registry_url = options.federation_url.split('#')[0] if options.federation_url else None
+        # state used by the federation config processing; must exist before anything can trigger it
+        self._federation_platforms = {}
+        self._federation_connections = {}  # Dict[platform_id, connection_info]
         # record of greenlets that handle replay from cache. one per external server
         self.cache_publisher_greenlets = {}  # {server_address: greenlet}
         # stop event for the cache_publisher_greenlets
@@ -105,13 +109,14 @@ class FederationService:
         # Register self with platform look up service and periodically poll for changes in federated volttron instances
         self._start_federation()
 
-        # TODO - combine with registered_platforms?
-        self._federation_platforms = {}
-        self._federation_connections = {}  # Dict[platform_id, connection_info]
-
         # Setup federation file watcher
         self._federation_observer = None
         self._setup_federation_watcher()
+
+        if self._federation_enabled and not self._registry_url:
+            # File-only mode: no registry to trigger a config write, so connect to the peers
+            # already listed in federation_config.json now.
+            gevent.spawn(self.process_federation_config)
 
     def _load_config(self):
         """Load federation configuration from file"""
@@ -167,8 +172,10 @@ class FederationService:
                 # Schedule registration with retry mechanism
                 self._registry_greenlet = gevent.spawn(self._registry_connection_loop)
             else:
-                # If no registry, just connect to platforms from config
-                self._register_stored_platforms()
+                # No registry: peers come only from federation_config.json (processed after init;
+                # credentials are registered when each connection is added)
+                _log.info(f"No federation-url configured. Federating with peers listed in "
+                          f"{self._federation_config_path}")
 
     def _registry_connection_loop(self):
         """Periodically try to register and get platforms from the registry"""
@@ -277,12 +284,11 @@ class FederationService:
         # Use the first address as our externally reachable address
         platform_address = self._options.address[0]
 
-        # Simple validation of the address format
-        if not (platform_address.startswith('tcp://') or
-                platform_address.startswith('ipc://') or
-                platform_address.startswith('inproc://')):
+        # Must be reachable by other platforms and accepted by the platform-lookup service,
+        # which only allows tcp:// and ipc:// (inproc:// is process-local and unusable remotely).
+        if not platform_address.startswith(('tcp://', 'ipc://')):
             _log.error(f"Invalid address format for federation: {platform_address}")
-            _log.error("Address should start with tcp://, ipc://, or inproc://")
+            _log.error("Address should start with tcp:// or ipc://")
             return False
 
         # Get our platform's public credentials using auth service
@@ -482,14 +488,25 @@ class FederationService:
             self._clear_all_federation_connections()
             return
 
-        with open(self._federation_config_path, 'r') as f:
-            config_data = json.load(f)
+        try:
+            with open(self._federation_config_path, 'r') as f:
+                config_data = json.load(f)
+        except (OSError, ValueError) as e:
+            # file may be hand edited / partially written; keep existing connections
+            _log.error(f"Unable to read federation config {self._federation_config_path}: {e}")
+            return
 
-        _log.debug(f"Processing federation config with {len(config_data)} platforms")
+        platforms = config_data.get('platforms', []) if isinstance(config_data, dict) else []
+        valid = []
+        for p in platforms:
+            if isinstance(p, dict) and all(k in p for k in ('id', 'address', 'public_credentials')):
+                valid.append(p)
+            else:
+                _log.error(f"Ignoring invalid federation config entry (needs id, address, public_credentials): {p}")
 
-        if 'platforms' in config_data:
-            # Compare with current platforms and update connections
-            self._update_federation_connections(config_data['platforms'])
+        _log.debug(f"Processing federation config with {len(valid)} platforms")
+        # Compare with current platforms and update connections
+        self._update_federation_connections(valid)
 
     def _update_federation_connections(self, new_platforms_list):
         """Update federation connections based on config changes"""
@@ -548,6 +565,15 @@ class FederationService:
 
         _log.info(f"Creating federation connection: {platform_id} -> {address}")
 
+        if not self._registry_url:
+            # With a registry, discovery already registered the credentials. In file-only mode
+            # do it here so the remote platform is accepted by the local auth service.
+            try:
+                self._auth_service.register_remote_platform(platform_id, public_credentials)
+            except Exception as e:
+                _log.error(f"Failed to register credentials for {platform_id}: {e}")
+                return
+
         our_creds: VolttronCredentials = self._auth_service.get_credentials(identity=PLATFORM)
         success = self._routing_service.add_external_route(
             platform_id=platform_id,
@@ -593,7 +619,7 @@ class FederationService:
 
     def _clear_all_federation_connections(self):
         """Clear all federation connections"""
-        platform_ids = list([p['id'] for p in self._federation_platforms])
+        platform_ids = list(self._federation_platforms.keys())
         for platform_id in platform_ids:
             self._remove_federation_connection(platform_id)
 
